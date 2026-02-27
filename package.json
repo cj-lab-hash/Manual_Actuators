@@ -1,11 +1,10 @@
 {
-  "name": "ma",
+  "name": "manual_actuators",
   "version": "1.0.0",
   "private": true,
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js",
     "import": "node scripts/import-data.js"
   },
   "dependencies": {
