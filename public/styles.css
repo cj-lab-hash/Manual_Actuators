@@ -39,4 +39,12 @@ button {
     font-size: 14px;
     cursor: pointer;
     position:relative
+
+}
+p1
+{
+  font-size: 14px;
+  position:right;
+  padding:10px 10px;
+  margin: 10px 0;
 }
