@@ -1,51 +1,54 @@
-// server.js or app.js
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-const db = require('./db');
+const { pool } = require('./db');
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// POST /api/save - Save or update a cell
-app.post('/api/save', (req, res) => {
+// Save / update a cell
+app.post('/api/save', async (req, res) => {
+  try {
     const { index, value } = req.body;
+    if (index === undefined) return res.status(400).json({ message: 'index is required' });
+
     const cellId = `cell${index}`;
-
-    db.run(
-        `INSERT INTO cells (id, value) VALUES (?, ?)
-         ON CONFLICT(id) DO UPDATE SET value = excluded.value`,
-        [cellId, value],
-        function (err) {
-            if (err) {
-                console.error('Error saving to DB:', err);
-                return res.status(500).json({ message: 'Error saving data' });
-            }
-            res.json({ message: 'Data saved successfully!' });
-        }
+    await pool.query(
+      'INSERT INTO cells (id, value) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value',
+      [cellId, value]
     );
+    res.json({ message: 'Data saved successfully!' });
+  } catch (err) {
+    console.error('Error saving to DB:', err);
+    res.status(500).json({ message: 'Error saving data' });
+  }
 });
 
-// GET /api/data - Load all cells
-app.get('/api/data', (req, res) => {
-    db.all(`SELECT * FROM cells`, [], (err, rows) => {
-        if (err) {
-            console.error('Error fetching from DB:', err);
-            return res.status(500).json({ message: 'Error reading data' });
-        }
-
-        // Convert rows into JSON like { cell1: 'value1', cell2: 'value2' }
-        const data = {};
-        rows.forEach(row => {
-            data[row.id] = row.value;
-        });
-
-        res.json(data);
-    });
+// Load all cells
+app.get('/api/data', async (_req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM cells');
+    const data = {};
+    for (const row of result.rows) data[row.id] = row.value;
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching from DB:', err);
+    res.status(500).json({ message: 'Error reading data' });
+  }
 });
 
-// Start the server
-const PORT = 3003;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+const PORT = process.env.PORT || 3003;
+const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+// graceful shutdown
+function shutdown() {
+  console.log('Shutting down...');
+  server.close(async () => {
+    try { await pool.end(); } catch {}
+    process.exit(0);
+  });
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
