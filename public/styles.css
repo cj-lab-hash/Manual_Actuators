@@ -41,10 +41,12 @@ button {
     position:relative
 
 }
-p1
-{
-  font-size: 14px;
-  position:right;
-  padding:10px 10px;
-  margin: 10px 0;
+p1 {
+    font-size: 15px;
+    color: #555;
+    margin-top: 5px;
+    position:fixed;
+    top: 10px;
+    right: 10px;
 }
+
