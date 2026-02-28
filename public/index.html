@@ -10,7 +10,37 @@
 <body>
 <div id="table">
     <h1>List of Manual Actuators</h1>
-    <p1>Made by CJ Condada</p1>
+    <div id="badge-container" style="
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  text-align: right;
+  line-height: 1.15;
+">
+  <!-- Your existing label -->
+  <span id="made-by" style="
+    background: #fffb8a; 
+    padding: 2px 6px; 
+    border-radius: 4px; 
+    font-weight: 600;
+    display: inline-block;
+    margin-bottom: 4px;
+  ">
+    CJ Condada
+  </span>
+  <!-- Barcode (SVG) -->
+  <div>
+    <svg id="idBarcode"></svg>
+  </div>
+  <!-- Watermark text -->
+  <div id="watermark" style="
+    font-size: 10px; 
+    color: #888; 
+    margin-top: 2px;
+  ">
+    ID: CJ-MA-2026-02-28
+  </div>
+</div>
     <button onclick="addRow()">➕ Add Row</button>
     <button onclick="removeRow()">➖ Remove Last Row</button>
     <table class="dataframe" style="width:90%" id="editableTable">
@@ -165,8 +195,28 @@
         makeAllCellsEditable();
     };
 </script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+
+<script>
+  // === CONFIG: set the unique string you want to encode ===
+  // You can later switch this to a dynamic value (date, version, etc.)
+  const UNIQUE_ID = "CJ-MA-2026-02-28";
+
+  // Render the barcode
+  // Options: https://github.com/lindell/JsBarcode
+  JsBarcode("#idBarcode", UNIQUE_ID, {
+    format: "CODE128",   // widely readable barcode symbology
+    width: 1,            // bar thickness; try 1–2
+    height: 42,          // barcode height in px
+    margin: 0,           // remove outer whitespace
+    displayValue: false  // hide human-readable text (we add our own watermark below)
+  });
+
+  // Set the watermark text under the barcode
+  document.getElementById("watermark").textContent = `ID: ${UNIQUE_ID}`;
+</script>
 </body>
 
 </html>
+
 
