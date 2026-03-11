@@ -66,26 +66,25 @@ async function initDatabase() {
 initDatabase();
 // -----------------------------------------
 
-
-
 const app = express();
 app.use(express.json());
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Save / update a cell
+// --------------------------
+// Save / update a cell (CELLS table - not audited by actuators trigger)
+// NOTE: This is a POST endpoint. Opening it in a browser as GET will show "Cannot GET /api/save".
 app.post('/api/save', async (req, res) => {
   try {
     const { index, value, editedBy } = req.body;
     if (index === undefined) return res.status(400).json({ message: 'index is required' });
+
     const cellId = `cells#${index}`;
-    
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-       await client.query('SELECT set_config($1, $2, true);', ['app.user', editedBy || 'unknown']);
-      // If you want this to also be captured by the audit mechanism, write to "actuators"
-      // For now, leaving your existing "cells" upsert as-is:
+      // Set per-transaction actor (safe with dotted name via set_config)
+      await client.query('SELECT set_config($1, $2, true);', ['app.user', editedBy || 'unknown']);
       await client.query(
         'INSERT INTO cells (id, value) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value',
         [cellId, value]
@@ -118,31 +117,32 @@ app.get('/api/data', async (_req, res) => {
   }
 });
 
+// --------------------------
+// DEV/VERIFY ROUTES
+
+// Check schema objects exist (you already used this)
 app.get('/dbcheck', async (_req, res) => {
   try {
     const q = `
-    SELECT table_name
-    const { rows } = await pool.query(`
       SELECT table_name
       FROM information_schema.tables
       WHERE table_schema='public'
-      AND table_name IN ('actuators','actuators_audit')
+        AND table_name IN ('actuators','actuators_audit')
       ORDER BY table_name;
     `;
-      const { rows } = await pool.query(q);
+    const { rows } = await pool.query(q);
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-app.get('/demo-insert', async (req, res) => {
+// Insert a demo row into "actuators" and capture "who"
+app.get('/demo-insert', async (_req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // Set the actor in this transaction (readable by the trigger)
     await client.query('SELECT set_config($1, $2, true);', ['app.user', 'demo-user']);
-
     const q = await client.query(
       `INSERT INTO actuators(data) VALUES ($1) RETURNING id`,
       [{ part_no: 'X-123', status: 'new', torque: 5 }]
@@ -156,7 +156,9 @@ app.get('/demo-insert', async (req, res) => {
     client.release();
   }
 });
-app.get('/audit-latest', async (req, res) => {
+
+// Show latest audit entries (from actuators_audit)
+app.get('/audit-latest', async (_req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT audit_id, row_id, op, changed_by, changed_at, old_data, new_data
@@ -170,9 +172,9 @@ app.get('/audit-latest', async (req, res) => {
   }
 });
 
+// --------------------------
 const PORT = process.env.PORT || 3003;
 const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
 
 // graceful shutdown
 function shutdown() {
@@ -184,7 +186,3 @@ function shutdown() {
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
-
-
-
-
