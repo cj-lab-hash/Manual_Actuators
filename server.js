@@ -104,12 +104,20 @@ app.post('/api/save', async (req, res) => {
   }
 });
 
-// Load all cells
+// Load all cells (normalize keys so the UI sees "0","1","2"... instead of "cells#0"...)
 app.get('/api/data', async (_req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM cells');
+    const result = await pool.query('SELECT id, value FROM cells');
     const data = {};
-    for (const row of result.rows) data[row.id] = row.value;
+
+    for (const row of result.rows) {
+      // Normalize: "cells#12" -> "12"
+      const normalizedKey = String(row.id).startsWith('cells#')
+        ? String(row.id).slice('cells#'.length)
+        : String(row.id);
+      data[normalizedKey] = row.value;
+    }
+
     res.json(data);
   } catch (err) {
     console.error('Error fetching from DB:', err);
@@ -186,3 +194,4 @@ function shutdown() {
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+
