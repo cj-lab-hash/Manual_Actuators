@@ -205,13 +205,16 @@
     }
     return name;
   }
-  async function saveRow(row) {
+
+  // Example usage:
+  async function saveCell(index, value) {
     const editedBy = getEditorName();
-    await fetch('/api/save', {
+    const resp = await fetch('/api/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ index, value, editedBy })
     });
+    console.log(await resp.json());
   }
 </script>
 
@@ -236,6 +239,7 @@
 </body>
 
 </html>
+
 
 
 
