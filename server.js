@@ -135,7 +135,9 @@ app.get('/demo-insert', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('SET LOCAL app.user = $1', ['demo-user']);
+    // Set the actor in this transaction (readable by the trigger)
+    await client.query('SELECT set_config($1, $2, true);', ['app.user', 'demo-user']);
+
     const q = await client.query(
       `INSERT INTO actuators(data) VALUES ($1) RETURNING id`,
       [{ part_no: 'X-123', status: 'new', torque: 5 }]
@@ -177,5 +179,6 @@ function shutdown() {
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+
 
 
