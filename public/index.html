@@ -196,6 +196,24 @@
     };
 </script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+<script>
+  function getEditorName() {
+    let name = localStorage.getItem('editorName');
+    if (!name) {
+      name = prompt('Enter your name (for change tracking):') || 'unknown';
+      localStorage.setItem('editorName', name);
+    }
+    return name;
+  }
+  async function saveCell(index, value) {
+    const editedBy = getEditorName();
+    await fetch('/api/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ index, value, editedBy })
+    });
+  }
+</script>
 
 <script>
   // === CONFIG: set the unique string you want to encode ===
@@ -218,5 +236,6 @@
 </body>
 
 </html>
+
 
 
