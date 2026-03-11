@@ -78,16 +78,17 @@ app.post('/api/save', async (req, res) => {
   try {
     const { index, value, editedBy } = req.body;
     if (index === undefined) return res.status(400).json({ message: 'index is required' });
-
+    const cellId = `cells#${index}`;
+    
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SET LOCAL app.user = $1', [editedBy || 'unknown']);
+       await client.query('SELECT set_config($1, $2, true);', ['app.user', editedBy || 'unknown']);
       // If you want this to also be captured by the audit mechanism, write to "actuators"
       // For now, leaving your existing "cells" upsert as-is:
       await client.query(
         'INSERT INTO cells (id, value) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value',
-        [index, value]
+        [cellId, value]
       );
       await client.query('COMMIT');
     } catch (e) {
@@ -119,12 +120,16 @@ app.get('/api/data', async (_req, res) => {
 
 app.get('/dbcheck', async (_req, res) => {
   try {
+    const q = `
+    SELECT table_name
     const { rows } = await pool.query(`
       SELECT table_name
       FROM information_schema.tables
-      WHERE table_schema='public' AND table_name IN ('actuators','actuators_audit')
+      WHERE table_schema='public'
+      AND table_name IN ('actuators','actuators_audit')
       ORDER BY table_name;
-    `);
+    `;
+      const { rows } = await pool.query(q);
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -179,6 +184,7 @@ function shutdown() {
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+
 
 
 
