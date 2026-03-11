@@ -130,8 +130,42 @@ app.get('/dbcheck', async (_req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+app.get('/demo-insert', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL app.user = $1', ['demo-user']);
+    const q = await client.query(
+      `INSERT INTO actuators(data) VALUES ($1) RETURNING id`,
+      [{ part_no: 'X-123', status: 'new', torque: 5 }]
+    );
+    await client.query('COMMIT');
+    res.json({ inserted_id: q.rows[0].id });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+app.get('/audit-latest', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT audit_id, row_id, op, changed_by, changed_at, old_data, new_data
+      FROM actuators_audit
+      ORDER BY changed_at DESC
+      LIMIT 10
+    `);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 const PORT = process.env.PORT || 3003;
 const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 // graceful shutdown
 function shutdown() {
@@ -143,4 +177,5 @@ function shutdown() {
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+
 
