@@ -193,6 +193,37 @@ app.get('/cells-check', async (_req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+app.post('/api/save', async (req, res) => {
+  try {
+    console.log('--- /api/save payload ---', req.body); // <== add this line
+    const { index, value, editedBy } = req.body;
+    if (index === undefined) return res.status(400).json({ message: 'index is required' });
+
+    const cellId = `cells#${index}`;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT set_config($1, $2, true);', ['app.user', editedBy || 'unknown']);
+      await client.query(
+        'INSERT INTO cells (id, value) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value',
+        [cellId, value]
+      );
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    res.json({ message: 'Data saved successfully!' });
+  } catch (err) {
+    console.error('Error saving to DB:', err);
+    res.status(500).json({ message: 'Error saving data' });
+  }
+});
+
 // --------------------------
 const PORT = process.env.PORT || 3003;
 const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
@@ -207,5 +238,6 @@ function shutdown() {
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+
 
 
