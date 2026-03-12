@@ -109,7 +109,6 @@ async function initDatabase() {
     console.error('❌ Schema init error:', err);
   }
 }
-// run schema init as early as possible
 initDatabase();
 
 /* -------------------------------------------
@@ -117,12 +116,12 @@ initDatabase();
 --------------------------------------------*/
 const app = express();
 
-// SECURITY: Add request size limit
+// SECURITY: limit JSON payload to avoid accidental large posts
 app.use(express.json({ limit: '10kb' }));
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// SECURITY: Basic authentication middleware (optional - set via environment)
+// Optional bearer token check if AUTH_TOKEN is set in env
 const AUTH_TOKEN = process.env.AUTH_TOKEN;
 if (AUTH_TOKEN) {
   app.use((req, res, next) => {
@@ -142,11 +141,11 @@ if (AUTH_TOKEN) {
 app.post('/api/save', async (req, res) => {
   try {
     console.log('--- /api/save payload ---', req.body);
-    const { index, value, editedBy } = req.body;
-    
-    // VALIDATION: Check required fields and types
-    if (index === undefined) return res.status(400).json({ error: 'index is required' });
-    if (!Number.isInteger(index) || index < 0) {
+    const { value, editedBy } = req.body;
+
+    // index can arrive as a string from the browser; normalize safely
+    const idxNum = Number(req.body.index);
+    if (!Number.isInteger(idxNum) || idxNum < 0) {
       return res.status(400).json({ error: 'index must be a non-negative integer' });
     }
     if (typeof value !== 'string') {
@@ -156,15 +155,9 @@ app.post('/api/save', async (req, res) => {
       return res.status(400).json({ error: 'value exceeds maximum length (5000 chars)' });
     }
 
-    const cellId = `cells#${index}`; // keep current storage format
-    let client;
-    try {
-      client = await pool.connect();
-    } catch (err) {
-      console.error('Error connecting to database:', err);
-      return res.status(500).json({ error: 'Database connection failed' });
-    }
+    const cellId = `cells#${idxNum}`; // keep current storage format
 
+    const client = await pool.connect();
     try {
       await client.query('BEGIN');
       // per-request actor for triggers
@@ -229,14 +222,7 @@ app.get('/dbcheck', async (_req, res) => {
 
 // Demo insert into "actuators" (to see actuators audit working)
 app.get('/demo-insert', async (_req, res) => {
-  let client;
-  try {
-    client = await pool.connect();
-  } catch (err) {
-    console.error('Error connecting to database:', err);
-    return res.status(500).json({ error: 'Database connection failed' });
-  }
-
+  const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query('SELECT set_config($1, $2, true);', ['app.user', 'demo-user']);
@@ -247,9 +233,7 @@ app.get('/demo-insert', async (_req, res) => {
     await client.query('COMMIT');
     res.json({ inserted_id: q.rows[0].id });
   } catch (e) {
-    try {
-      await client.query('ROLLBACK');
-    } catch {}
+    await client.query('ROLLBACK');
     res.status(500).json({ error: e.message });
   } finally {
     client.release();
@@ -306,38 +290,25 @@ app.get('/api/cell-audit', async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit || '50', 10) || 50, 500);
   const { actor, cell } = req.query;
 
-  // FIX: Build parameterized query to prevent SQL injection
+  // Parameterized WHERE to prevent injection
   const params = [];
   const whereClauses = [];
-
-  if (actor) {
-    params.push(actor);
-    whereClauses.push(`changed_by = $${params.length}`);
-  }
-  if (cell) {
-    params.push(cell);
-    whereClauses.push(`cell_id = $${params.length}`);
-  }
-
+  if (actor) { params.push(actor); whereClauses.push(`changed_by = $${params.length}`); }
+  if (cell)  { params.push(cell);  whereClauses.push(`cell_id = $${params.length}`); }
   params.push(limit);
-  const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+  const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
+  const sql = `
+    SELECT audit_id, cell_id, op, changed_by, changed_at, old_value, new_value
+    FROM cells_audit
+    ${whereSql}
+    ORDER BY changed_at DESC
+    LIMIT $${params.length}
+  `;
 
   try {
-    const query = `
-      SELECT audit_id, cell_id, op, changed_by, changed_at, old_value, new_value
-      FROM cells_audit
-      ${whereClause}
-      ORDER BY changed_at DESC
-      LIMIT $${params.length}
-    `;
-
-    const { rows } = await pool.query(query, params);
-
-    const enriched = rows.map(r => {
-      const m = decodeCellId(r.cell_id);
-      return { ...r, ...m };
-    });
-
+    const { rows } = await pool.query(sql, params);
+    const enriched = rows.map(r => ({ ...r, ...decodeCellId(r.cell_id) }));
     res.json(enriched);
   } catch (e) {
     res.status(500).json({ error: e.message });
