@@ -59,141 +59,172 @@
 </div>
 <div id="output"></div>
 <script>
-    let nextIndex = 0;
+  let nextIndex = 0;
 
-    function updateNextIndex() {
-        const cells = document.querySelectorAll("#editableTable td[data-index]");
-        let maxFound = -1;
-        cells.forEach(cell => {
-            const idx = parseInt(cell.getAttribute('data-index'));
-            if (idx > maxFound) maxFound = idx;
-        });
-        nextIndex = maxFound + 1;
+  function getEditorName() {
+    let name = localStorage.getItem('editorName');
+    if (!name) {
+      name = prompt('Enter your name (for change tracking):') || 'unknown';
+      localStorage.setItem('editorName', name);
+    }
+    return name;
+  }
+
+  function updateNextIndex() {
+    const cells = document.querySelectorAll("#editableTable td[data-index]");
+    let maxFound = -1;
+    cells.forEach(cell => {
+      const idx = parseInt(cell.getAttribute('data-index'), 10);
+      if (!Number.isNaN(idx) && idx > maxFound) maxFound = idx;
+    });
+    nextIndex = maxFound + 1;
+  }
+
+  // Load data and rebuild table
+  async function loadData() {
+    const table = document.getElementById("editableTable");
+    const tbody = table.querySelector('tbody');
+
+    // 1) Collect existing HTML values using numeric keys ("0","1"...)
+    const existingData = {};
+    document.querySelectorAll("#editableTable td[data-index]").forEach(cell => {
+      const k = String(cell.getAttribute('data-index'));
+      existingData[k] = cell.innerText;
+    });
+
+    // 2) Fetch DB data (already normalized to numeric keys by /api/data)
+    let dbData = {};
+    try {
+      const res = await fetch('/api/data');
+      dbData = await res.json();
+    } catch (err) {
+      console.error('Error loading /api/data:', err);
     }
 
-    // ✅ Updated loadData function
-    function loadData() {
-        const table = document.getElementById("editableTable");
-        const tbody = table.querySelector('tbody');
+    // 3) Merge, prefer DB over stale HTML
+    const mergedData = { ...existingData, ...dbData };
 
-        // Step 1: collect existing HTML values
-        const existingData = {};
-        document.querySelectorAll("#editableTable td[data-index]").forEach(cell => {
-            existingData[cell.getAttribute('data-index')] = cell.innerText;
-        });
+    // 4) Rebuild table
+    tbody.innerHTML = "";
 
-        // Step 2: fetch database data
-        fetch('/api/data')
-            .then(res => res.json())
-            .then(data => {
-                // Merge existing HTML values into fetched DB data
-                const mergedData = { ...existingData, ...data };
+    const columns = table.querySelectorAll('thead th').length; // 4
+    const allKeys = Object.keys(mergedData)
+      .map(k => parseInt(k, 10))
+      .filter(n => !Number.isNaN(n));
+    const maxIndex = allKeys.length > 0 ? Math.max(...allKeys) : -1;
+    const rowCount = Math.ceil((maxIndex + 1) / columns);
 
-                tbody.innerHTML = ""; // Clear rows
-
-                const columns = table.querySelectorAll('thead th').length;
-                const allKeys = Object.keys(mergedData).map(k => parseInt(k.replace('cell','')));
-                const maxIndex = allKeys.length > 0 ? Math.max(...allKeys) : -1;
-                const rowCount = Math.ceil((maxIndex + 1) / columns);
-
-                for (let r = 0; r < rowCount; r++) {
-                    const tr = document.createElement('tr');
-                    for (let c = 0; c < columns; c++) {
-                        const cellIndex = r * columns + c;
-                        const td = document.createElement('td');
-                        td.setAttribute('data-index', cellIndex);
-                        td.innerText = mergedData[`cell${cellIndex}`] || "";
-                        td.ondblclick = () => editCell(td);
-                        tr.appendChild(td);
-                    }
-                    tbody.appendChild(tr);
-                }
-
-                nextIndex = (rowCount * columns);
-
-                // Save all merged data to DB
-                saveData();
-            })
-            .catch(err => console.error('Error loading data:', err));
+    for (let r = 0; r < rowCount; r++) {
+      const tr = document.createElement('tr');
+      for (let c = 0; c < columns; c++) {
+        const cellIndex = r * columns + c;             // numeric index
+        const td = document.createElement('td');
+        td.setAttribute('data-index', cellIndex);
+        td.innerText = mergedData[String(cellIndex)] || "";
+        td.ondblclick = () => editCell(td);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
     }
 
-    function saveData() {
-        document.querySelectorAll("#editableTable td[data-index]").forEach(cell => {
-            const index = cell.getAttribute('data-index');
-            const value = cell.innerText;
-            fetch('/api/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ index, value })
-            });
-        });
+    nextIndex = (rowCount * columns);
+
+    // ❌ IMPORTANT: do NOT auto-save here—this can overwrite DB with blanks.
+    // saveData();  <-- removed
+  }
+
+  // Bulk save all cells (sends editedBy)
+  async function saveData() {
+    const editedBy = getEditorName();
+    const cells = document.querySelectorAll("#editableTable td[data-index]");
+    for (const cell of cells) {
+      const index = cell.getAttribute('data-index');
+      const value = cell.innerText;
+      await fetch('/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index, value, editedBy })
+      });
     }
+  }
 
-    function editCell(td) {
-        const currentText = td.innerText;
-        const input = document.createElement("input");
-        input.type = "text";
-        input.value = currentText;
-        td.innerHTML = "";
-        td.appendChild(input);
-        input.focus();
+  function editCell(td) {
+    const currentText = td.innerText;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = currentText;
+    td.innerHTML = "";
+    td.appendChild(input);
+    input.focus();
 
-        input.addEventListener("blur", () => saveEdit(td, input.value));
-        input.addEventListener("keydown", e => { if (e.key === "Enter") input.blur(); });
+    input.addEventListener("blur", () => saveEdit(td, input.value));
+    input.addEventListener("keydown", e => { if (e.key === "Enter") input.blur(); });
+  }
+
+  async function saveEdit(td, newValue) {
+    const index = td.getAttribute('data-index');
+    td.innerText = newValue;
+
+    const editedBy = getEditorName();
+    const res = await fetch('/api/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ index, value: newValue, editedBy })
+    });
+    try {
+      const json = await res.json();
+      console.log('saveEdit:', json);
+    } catch {}
+  }
+
+  function makeAllCellsEditable() {
+    document.querySelectorAll('#editableTable td[data-index]').forEach(cell => {
+      cell.ondblclick = () => editCell(cell);
+    });
+  }
+
+  // Add a full blank row (and immediately persist blanks with editedBy)
+  async function addRow() {
+    const table = document.getElementById("editableTable");
+    const columnCount = table.querySelectorAll('thead th').length;
+    const tbody = table.querySelector('tbody');
+    const newRow = tbody.insertRow(-1);
+    const editedBy = getEditorName();
+
+    for (let i = 0; i < columnCount; i++) {
+      const newCell = newRow.insertCell(i);
+      newCell.setAttribute("data-index", nextIndex++);
+      newCell.ondblclick = () => editCell(newCell);
+      newCell.innerText = "";
+
+      await fetch('/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          index: newCell.getAttribute('data-index'),
+          value: "",
+          editedBy
+        })
+      });
     }
+  }
 
-    function saveEdit(td, newValue) {
-        const index = td.getAttribute('data-index');
-        td.innerText = newValue;
-        fetch('/api/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ index, value: newValue })
-        }).then(res => res.json())
-          .then(r => console.log(r.message));
+  function removeRow() {
+    const table = document.getElementById("editableTable");
+    const tbody = table.tBodies[0];
+    if (tbody.rows.length > 0) {
+      tbody.deleteRow(-1);
+      updateNextIndex();
+    } else {
+      alert("No more rows to remove.");
     }
+  }
 
-    function makeAllCellsEditable() {
-        document.querySelectorAll('#editableTable td[data-index]').forEach(cell => {
-            cell.ondblclick = () => editCell(cell);
-        });
-    }
-
-    function addRow() {
-        const table = document.getElementById("editableTable");
-        const columnCount = table.querySelectorAll('thead th').length;
-        const tbody = table.querySelector('tbody');
-        const newRow = tbody.insertRow(-1);
-
-        for (let i = 0; i < columnCount; i++) {
-            const newCell = newRow.insertCell(i);
-            newCell.setAttribute("data-index", nextIndex++);
-            newCell.ondblclick = () => editCell(newCell);
-            newCell.innerText = "";
-
-            fetch('/api/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ index: newCell.getAttribute('data-index'), value: "" })
-            });
-        }
-    }
-
-    function removeRow() {
-        const table = document.getElementById("editableTable");
-        const tbody = table.tBodies[0];
-        if (tbody.rows.length > 0) {
-            tbody.deleteRow(-1);
-        } else {
-            alert("No more rows to remove.");
-        }
-    }
-
-    window.onload = function () {
-        updateNextIndex();
-        loadData();
-        makeAllCellsEditable();
-    };
+  window.onload = function () {
+    updateNextIndex();
+    loadData();
+    makeAllCellsEditable();
+  };
 </script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 <script>
@@ -239,6 +270,7 @@
 </body>
 
 </html>
+
 
 
 
