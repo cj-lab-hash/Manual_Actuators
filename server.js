@@ -1,11 +1,15 @@
+// server.js
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const { pool } = require('./db');
 
-// ----- DB Schema Init (runs on boot) -----
+/* -------------------------------------------
+   DB Schema Init (runs on boot)
+--------------------------------------------*/
 async function initDatabase() {
   const schema = `
+  /* ====== ACTUATORS + AUDIT ====== */
   CREATE TABLE IF NOT EXISTS actuators (
     id SERIAL PRIMARY KEY,
     data JSONB NOT NULL,
@@ -32,12 +36,10 @@ async function initDatabase() {
       INSERT INTO actuators_audit(op, row_id, changed_by, old_data, new_data)
       VALUES ('INSERT', NEW.id, actor, NULL, NEW.data);
       RETURN NEW;
-
     ELSIF TG_OP = 'UPDATE' THEN
       INSERT INTO actuators_audit(op, row_id, changed_by, old_data, new_data)
       VALUES ('UPDATE', NEW.id, actor, OLD.data, NEW.data);
       RETURN NEW;
-
     ELSIF TG_OP = 'DELETE' THEN
       INSERT INTO actuators_audit(op, row_id, changed_by, old_data, new_data)
       VALUES ('DELETE', OLD.id, actor, OLD.data, NULL);
@@ -53,37 +55,87 @@ async function initDatabase() {
 
   CREATE INDEX IF NOT EXISTS idx_act_audit_row_id ON actuators_audit (row_id);
   CREATE INDEX IF NOT EXISTS idx_act_audit_changed_at ON actuators_audit (changed_at);
+
+  /* ====== CELLS + AUDIT ====== */
+  CREATE TABLE IF NOT EXISTS cells (
+    id    TEXT PRIMARY KEY,
+    value TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS cells_audit (
+    audit_id    BIGSERIAL PRIMARY KEY,
+    cell_id     TEXT NOT NULL,
+    op          TEXT NOT NULL,                 -- INSERT / UPDATE / DELETE
+    changed_by  TEXT,                          -- from app.user (set in route)
+    changed_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    old_value   TEXT,
+    new_value   TEXT
+  );
+
+  CREATE OR REPLACE FUNCTION audit_cells_changes()
+  RETURNS TRIGGER AS $$
+  DECLARE
+    actor TEXT := current_setting('app.user', true);
+  BEGIN
+    IF TG_OP = 'INSERT' THEN
+      INSERT INTO cells_audit(cell_id, op, changed_by, old_value, new_value)
+      VALUES (NEW.id, 'INSERT', actor, NULL, NEW.value);
+      RETURN NEW;
+    ELSIF TG_OP = 'UPDATE' THEN
+      INSERT INTO cells_audit(cell_id, op, changed_by, old_value, new_value)
+      VALUES (NEW.id, 'UPDATE', actor, OLD.value, NEW.value);
+      RETURN NEW;
+    ELSIF TG_OP = 'DELETE' THEN
+      INSERT INTO cells_audit(cell_id, op, changed_by, old_value, new_value)
+      VALUES (OLD.id, 'DELETE', actor, OLD.value, NULL);
+      RETURN OLD;
+    END IF;
+  END;
+  $$ LANGUAGE plpgsql;
+
+  DROP TRIGGER IF EXISTS trg_audit_cells ON cells;
+  CREATE TRIGGER trg_audit_cells
+  AFTER INSERT OR UPDATE OR DELETE ON cells
+  FOR EACH ROW EXECUTE FUNCTION audit_cells_changes();
+
+  CREATE INDEX IF NOT EXISTS idx_cells_audit_cell_id ON cells_audit (cell_id);
+  CREATE INDEX IF NOT EXISTS idx_cells_audit_changed_at ON cells_audit (changed_at);
   `;
 
   try {
     await pool.query(schema);
-    console.log('📦 Schema initialized (actuators + audit).');
+    console.log('📦 Schema initialized (actuators + cells + audits).');
   } catch (err) {
     console.error('❌ Schema init error:', err);
   }
 }
-// call it immediately during startup
+// run schema init as early as possible
 initDatabase();
-// -----------------------------------------
 
+/* -------------------------------------------
+   App & Middleware
+--------------------------------------------*/
 const app = express();
 app.use(express.json());
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --------------------------
-// Save / update a cell (CELLS table - not audited by actuators trigger)
-// NOTE: This is a POST endpoint. Opening it in a browser as GET will show "Cannot GET /api/save".
+/* -------------------------------------------
+   Core API
+--------------------------------------------*/
+
+// Save / update a cell in "cells" (audited by cells_audit)
 app.post('/api/save', async (req, res) => {
   try {
+    console.log('--- /api/save payload ---', req.body);
     const { index, value, editedBy } = req.body;
     if (index === undefined) return res.status(400).json({ message: 'index is required' });
 
-    const cellId = `cells#${index}`;
+    const cellId = `cells#${index}`; // keep current storage format
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      // Set per-transaction actor (safe with dotted name via set_config)
+      // per-request actor for triggers
       await client.query('SELECT set_config($1, $2, true);', ['app.user', editedBy || 'unknown']);
       await client.query(
         'INSERT INTO cells (id, value) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value',
@@ -104,20 +156,17 @@ app.post('/api/save', async (req, res) => {
   }
 });
 
-// Load all cells (normalize keys so the UI sees "0","1","2"... instead of "cells#0"...)
+// Load all cells (normalize keys so the UI receives "0","1","2", ... instead of "cells#0"...)
 app.get('/api/data', async (_req, res) => {
   try {
     const result = await pool.query('SELECT id, value FROM cells');
     const data = {};
-
     for (const row of result.rows) {
-      // Normalize: "cells#12" -> "12"
       const normalizedKey = String(row.id).startsWith('cells#')
         ? String(row.id).slice('cells#'.length)
         : String(row.id);
       data[normalizedKey] = row.value;
     }
-
     res.json(data);
   } catch (err) {
     console.error('Error fetching from DB:', err);
@@ -125,10 +174,11 @@ app.get('/api/data', async (_req, res) => {
   }
 });
 
-// --------------------------
-// DEV/VERIFY ROUTES
+/* -------------------------------------------
+   Verify / Demo routes (optional)
+--------------------------------------------*/
 
-// Check schema objects exist (you already used this)
+// Check that the two audit tables for actuators exist
 app.get('/dbcheck', async (_req, res) => {
   try {
     const q = `
@@ -145,7 +195,7 @@ app.get('/dbcheck', async (_req, res) => {
   }
 });
 
-// Insert a demo row into "actuators" and capture "who"
+// Demo insert into "actuators" (to see actuators audit working)
 app.get('/demo-insert', async (_req, res) => {
   const client = await pool.connect();
   try {
@@ -165,7 +215,7 @@ app.get('/demo-insert', async (_req, res) => {
   }
 });
 
-// Show latest audit entries (from actuators_audit)
+// Show latest audit entries from actuators_audit
 app.get('/audit-latest', async (_req, res) => {
   try {
     const { rows } = await pool.query(`
@@ -179,6 +229,8 @@ app.get('/audit-latest', async (_req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+// Inspect "cells" columns (sanity check)
 app.get('/cells-check', async (_req, res) => {
   try {
     const q = `
@@ -194,41 +246,59 @@ app.get('/cells-check', async (_req, res) => {
   }
 });
 
-app.post('/api/save', async (req, res) => {
+/* -------------------------------------------
+   NEW: cell-audit with decode (who/what/where)
+--------------------------------------------*/
+
+// Map "cells#<n>" to row & column names (4 columns total)
+function decodeCellId(cellId) {
+  const n = parseInt(String(cellId).replace(/^cells#/, ''), 10);
+  if (Number.isNaN(n)) return null;
+  const columns = ['NAME', 'DESCRIPTION', 'BARCODE', 'REMARKS'];
+  const colIdx = n % columns.length;
+  const rowIdx = Math.floor(n / columns.length);
+  return { index: n, row: rowIdx, column: columns[colIdx] };
+}
+
+// View last N edits. Optional filters: ?actor=...&cell=cells#9
+app.get('/api/cell-audit', async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit || '50', 10) || 50, 500);
+  const { actor, cell } = req.query;
+
+  // Build simple WHERE clauses if filters provided
+  const where = [];
+  const params = [];
+  if (actor) { params.push(actor); where.push(`changed_by = $${params.length}`); }
+  if (cell)  { params.push(cell);  where.push(`cell_id    = $${params.length}`); }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
   try {
-    console.log('--- /api/save payload ---', req.body); // <== add this line
-    const { index, value, editedBy } = req.body;
-    if (index === undefined) return res.status(400).json({ message: 'index is required' });
+    const { rows } = await pool.query(
+      `SELECT audit_id, cell_id, op, changed_by, changed_at, old_value, new_value
+       FROM cells_audit
+       ${whereSql}
+       ORDER BY changed_at DESC
+       LIMIT $${params.length + 1}`,
+      [...params, limit]
+    );
 
-    const cellId = `cells#${index}`;
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query('SELECT set_config($1, $2, true);', ['app.user', editedBy || 'unknown']);
-      await client.query(
-        'INSERT INTO cells (id, value) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value',
-        [cellId, value]
-      );
-      await client.query('COMMIT');
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+    const enriched = rows.map(r => {
+      const m = decodeCellId(r.cell_id);
+      return { ...r, ...m };
+    });
 
-    res.json({ message: 'Data saved successfully!' });
-  } catch (err) {
-    console.error('Error saving to DB:', err);
-    res.status(500).json({ message: 'Error saving data' });
+    res.json(enriched);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
-// --------------------------
+/* -------------------------------------------
+   Start server & graceful shutdown
+--------------------------------------------*/
 const PORT = process.env.PORT || 3003;
 const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
-// graceful shutdown
 function shutdown() {
   console.log('Shutting down...');
   server.close(async () => {
@@ -238,6 +308,3 @@ function shutdown() {
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
-
-
-
