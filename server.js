@@ -179,7 +179,20 @@ app.get('/audit-latest', async (_req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
+app.get('/cells-check', async (_req, res) => {
+  try {
+    const q = `
+      SELECT column_name, data_type
+      FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='cells'
+      ORDER BY ordinal_position;
+    `;
+    const { rows } = await pool.query(q);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 // --------------------------
 const PORT = process.env.PORT || 3003;
 const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
@@ -194,4 +207,5 @@ function shutdown() {
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+
 
