@@ -116,9 +116,23 @@ initDatabase();
    App & Middleware
 --------------------------------------------*/
 const app = express();
-app.use(express.json());
+
+// SECURITY: Add request size limit
+app.use(express.json({ limit: '10kb' }));
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// SECURITY: Basic authentication middleware (optional - set via environment)
+const AUTH_TOKEN = process.env.AUTH_TOKEN;
+if (AUTH_TOKEN) {
+  app.use((req, res, next) => {
+    const token = req.headers['authorization']?.split(' ')[1];
+    if (token !== AUTH_TOKEN) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    next();
+  });
+}
 
 /* -------------------------------------------
    Core API
@@ -129,10 +143,28 @@ app.post('/api/save', async (req, res) => {
   try {
     console.log('--- /api/save payload ---', req.body);
     const { index, value, editedBy } = req.body;
-    if (index === undefined) return res.status(400).json({ message: 'index is required' });
+    
+    // VALIDATION: Check required fields and types
+    if (index === undefined) return res.status(400).json({ error: 'index is required' });
+    if (!Number.isInteger(index) || index < 0) {
+      return res.status(400).json({ error: 'index must be a non-negative integer' });
+    }
+    if (typeof value !== 'string') {
+      return res.status(400).json({ error: 'value must be a string' });
+    }
+    if (value.length > 5000) {
+      return res.status(400).json({ error: 'value exceeds maximum length (5000 chars)' });
+    }
 
     const cellId = `cells#${index}`; // keep current storage format
-    const client = await pool.connect();
+    let client;
+    try {
+      client = await pool.connect();
+    } catch (err) {
+      console.error('Error connecting to database:', err);
+      return res.status(500).json({ error: 'Database connection failed' });
+    }
+
     try {
       await client.query('BEGIN');
       // per-request actor for triggers
@@ -152,7 +184,7 @@ app.post('/api/save', async (req, res) => {
     res.json({ message: 'Data saved successfully!' });
   } catch (err) {
     console.error('Error saving to DB:', err);
-    res.status(500).json({ message: 'Error saving data' });
+    res.status(500).json({ error: 'Error saving data' });
   }
 });
 
@@ -170,7 +202,7 @@ app.get('/api/data', async (_req, res) => {
     res.json(data);
   } catch (err) {
     console.error('Error fetching from DB:', err);
-    res.status(500).json({ message: 'Error reading data' });
+    res.status(500).json({ error: 'Error reading data' });
   }
 });
 
@@ -197,7 +229,14 @@ app.get('/dbcheck', async (_req, res) => {
 
 // Demo insert into "actuators" (to see actuators audit working)
 app.get('/demo-insert', async (_req, res) => {
-  const client = await pool.connect();
+  let client;
+  try {
+    client = await pool.connect();
+  } catch (err) {
+    console.error('Error connecting to database:', err);
+    return res.status(500).json({ error: 'Database connection failed' });
+  }
+
   try {
     await client.query('BEGIN');
     await client.query('SELECT set_config($1, $2, true);', ['app.user', 'demo-user']);
@@ -208,7 +247,9 @@ app.get('/demo-insert', async (_req, res) => {
     await client.query('COMMIT');
     res.json({ inserted_id: q.rows[0].id });
   } catch (e) {
-    await client.query('ROLLBACK');
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
     res.status(500).json({ error: e.message });
   } finally {
     client.release();
@@ -265,22 +306,32 @@ app.get('/api/cell-audit', async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit || '50', 10) || 50, 500);
   const { actor, cell } = req.query;
 
-  // Build simple WHERE clauses if filters provided
-  const where = [];
+  // FIX: Build parameterized query to prevent SQL injection
   const params = [];
-  if (actor) { params.push(actor); where.push(`changed_by = $${params.length}`); }
-  if (cell)  { params.push(cell);  where.push(`cell_id    = $${params.length}`); }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const whereClauses = [];
+
+  if (actor) {
+    params.push(actor);
+    whereClauses.push(`changed_by = $${params.length}`);
+  }
+  if (cell) {
+    params.push(cell);
+    whereClauses.push(`cell_id = $${params.length}`);
+  }
+
+  params.push(limit);
+  const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
   try {
-    const { rows } = await pool.query(
-      `SELECT audit_id, cell_id, op, changed_by, changed_at, old_value, new_value
-       FROM cells_audit
-       ${whereSql}
-       ORDER BY changed_at DESC
-       LIMIT $${params.length + 1}`,
-      [...params, limit]
-    );
+    const query = `
+      SELECT audit_id, cell_id, op, changed_by, changed_at, old_value, new_value
+      FROM cells_audit
+      ${whereClause}
+      ORDER BY changed_at DESC
+      LIMIT $${params.length}
+    `;
+
+    const { rows } = await pool.query(query, params);
 
     const enriched = rows.map(r => {
       const m = decodeCellId(r.cell_id);
