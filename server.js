@@ -2,6 +2,13 @@
 require('dotenv').config();
 console.log('✅ server.js loaded');
 
+app.get('/_whoami', (_req, res) => {
+  res.json({
+    file: 'server.js',
+    version: 'cells-check-present',
+    time: new Date().toISOString()
+  });
+});
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
