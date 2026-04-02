@@ -6,3 +6,5 @@ logs
 backup_*.sql
 *.sql
 node_modules/
+.env
+backups/
