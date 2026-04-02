@@ -27,6 +27,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 const AUTH_TOKEN = process.env.AUTH_TOKEN;
 if (AUTH_TOKEN) {
   app.use((req, res, next) => {
+    // ✅ Allow debug & health routes without auth
+    if (
+      req.path === '/cells-check' ||
+      req.path === '/dbcheck' ||
+      req.path.startsWith('/_debug')
+    ) {
+      return next();
+    }
+
     const token = req.headers['authorization']?.split(' ')[1];
     if (token !== AUTH_TOKEN) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -164,7 +173,7 @@ app.get('/api/data', async (_req, res) => {
   );
 });
 
-<!-- for debuging -- >
+
 app.get('/_debug/dbinfo', async (_req, res) => {
   const db = await pool.query('SELECT current_database(), current_user');
   const path = await pool.query('SHOW search_path');
@@ -190,9 +199,10 @@ const PORT = process.env.PORT || 10000;
 
 (async () => {
   try {
-    await initDatabase();
+    console.log('🚀 Starting application...');
+    await initDatabase(); // ✅ MUST finish first
     app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`✅ Server running on port ${PORT}`);
     });
   } catch (err) {
     console.error('❌ Fatal startup error:', err);
