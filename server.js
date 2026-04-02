@@ -130,7 +130,34 @@ app.post('/api/save', async (req, res) => {
 
 // Load all cell data
 app.get('/api/data', async (_req, res) => {
-  const { rows } = await pool.query(`SELECT id, value FROM cells`);
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const { rows } = await client.query(`
+      SELECT id, value
+      FROM cells
+      ORDER BY
+        regexp_replace(id, '\\D', '', 'g')::int
+    `);
+
+    await client.query('COMMIT');
+
+    const data = {};
+    for (const r of rows) {
+      data[r.id.replace('cells#', '')] = r.value;
+    }
+
+    res.json(data);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
   const data = {};
   for (const r of rows) {
     data[r.id.replace('cells#', '')] = r.value;
