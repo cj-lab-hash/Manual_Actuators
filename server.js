@@ -316,6 +316,55 @@ app.get('/api/cell-audit', async (req, res) => {
 });
 
 /* -------------------------------------------
+   TEMP: Import data.json into cells
+   REMOVE AFTER USE
+--------------------------------------------*/
+app.post('/admin/import', async (req, res) => {
+  try {
+    const fs = require('fs');
+    const raw = fs.readFileSync('./data.json', 'utf8');
+    const data = JSON.parse(raw);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Mark import in audit logs
+      await client.query(
+        "SELECT set_config('app.user', $1, true)",
+        ['data.json import']
+      );
+
+      let count = 0;
+      for (const [index, value] of Object.entries(data)) {
+        const cellId = `cells#${index}`;
+        await client.query(
+          `
+          INSERT INTO cells (id, value)
+          VALUES ($1, $2)
+          ON CONFLICT (id)
+          DO UPDATE SET value = EXCLUDED.value
+          `,
+          [cellId, String(value)]
+        );
+        count++;
+      }
+
+      await client.query('COMMIT');
+      res.json({ success: true, imported: count });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error('Import failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+   
+/* -------------------------------------------
    Start server & graceful shutdown
 --------------------------------------------*/
 const PORT = process.env.PORT || 3003;
