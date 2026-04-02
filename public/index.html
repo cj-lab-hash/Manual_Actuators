@@ -85,9 +85,12 @@
       }
 
       const entries = Object.entries(data)
-        .map(([k, v]) => [Number(k), v])
-        .filter(([k]) => !Number.isNaN(k))
-        .sort((a, b) => a[0] - b[0]);
+          .map(([k, v]) => {
+    const num = Number(String(k).replace(/\D+/g, '')); // ✅ extract digits
+    return Number.isNaN(num) ? null : [num, v];
+      })
+      .filter(Boolean)
+      .sort((a, b) => a[0] - b[0]);
 
       const maxIndex = entries.length
         ? Math.max(...entries.map(e => e[0]))
