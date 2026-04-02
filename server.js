@@ -156,6 +156,8 @@ app.get('/api/data', async (_req, res) => {
     Object.fromEntries(rows.map(r => [r.id.replace('cells#', ''), r.value]))
   );
 });
+
+<!-- for debuging -- >
 app.get('/_debug/dbinfo', async (_req, res) => {
   const db = await pool.query('SELECT current_database(), current_user');
   const path = await pool.query('SHOW search_path');
@@ -164,6 +166,15 @@ app.get('/_debug/dbinfo', async (_req, res) => {
     user: db.rows[0].current_user,
     search_path: path.rows[0].search_path
   });
+});
+app.get('/_debug/all-tables', async (_req, res) => {
+  const { rows } = await pool.query(`
+    SELECT table_schema, table_name
+    FROM information_schema.tables
+    WHERE table_type = 'BASE TABLE'
+    ORDER BY table_schema, table_name;
+  `);
+  res.json(rows);
 });
 /* -------------------------------------------
    Start server ONLY AFTER schema is ready
