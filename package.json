@@ -13,3 +13,6 @@
     "pg": "^8.11.5"
   }
 }
+"scripts": {
+  "seed": "node import-data.js"
+}
