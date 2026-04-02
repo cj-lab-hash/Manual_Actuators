@@ -14,7 +14,7 @@ services:
     autoDeploy: true
 
 databases:
-  - name: ma-db
+  - name: ma-db-new
     databaseName: ma
     user: ma_user
     plan: free
