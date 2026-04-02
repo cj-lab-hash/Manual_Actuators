@@ -158,12 +158,6 @@ app.get('/api/data', async (_req, res) => {
     client.release();
   }
 });
-  const data = {};
-  for (const r of rows) {
-    data[r.id.replace('cells#', '')] = r.value;
-  }
-  res.json(data);
-});
 
 // Health check
 app.get('/healthz', (_req, res) => {
