@@ -156,7 +156,15 @@ app.get('/api/data', async (_req, res) => {
     Object.fromEntries(rows.map(r => [r.id.replace('cells#', ''), r.value]))
   );
 });
-
+app.get('/_debug/dbinfo', async (_req, res) => {
+  const db = await pool.query('SELECT current_database(), current_user');
+  const path = await pool.query('SHOW search_path');
+  res.json({
+    database: db.rows[0].current_database,
+    user: db.rows[0].current_user,
+    search_path: path.rows[0].search_path
+  });
+});
 /* -------------------------------------------
    Start server ONLY AFTER schema is ready
 --------------------------------------------*/
