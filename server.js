@@ -44,7 +44,28 @@ if (AUTH_TOKEN) {
     next();
   });
 }
+app.get('/cells-check', async (_req, res) => {
+  const q = `
+    SELECT column_name, data_type
+    FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='cells'
+    ORDER BY ordinal_position;
+  `;
+  const { rows } = await pool.query(q);
+  res.json(rows);
+});
 
+app.get('/dbcheck', async (_req, res) => {
+  const q = `
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema='public'
+      AND table_name IN ('actuators', 'actuators_audit', 'cells', 'cells_audit')
+    ORDER BY table_name;
+  `;
+  const { rows } = await pool.query(q);
+  res.json(rows);
+});
 /* -------------------------------------------
    DB Schema Init (MUST FINISH BEFORE SERVER START)
 --------------------------------------------*/
