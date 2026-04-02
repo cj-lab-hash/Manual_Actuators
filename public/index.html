@@ -60,124 +60,70 @@
        Frontend Logic
   ========================== -->
   <script>
-    let nextIndex = 0;
-    const COLUMNS = 4;
+const COLUMNS = 4;
+let nextIndex = 0;
 
-    function getEditorName() {
-      let name = localStorage.getItem('editorName');
-      if (!name) {
-        name = prompt('Enter your name (for change tracking):') || 'unknown';
-        localStorage.setItem('editorName', name);
+async function loadData() {
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+
+  let raw = {};
+  try {
+    const res = await fetch('/api/data');
+    raw = await res.json();
+  } catch (e) {
+    console.error(e);
+    return;
+  }
+
+  // ✅ Normalize keys: "cell17" → 17
+  const data = {};
+  for (const [k, v] of Object.entries(raw)) {
+    const num = Number(String(k).replace(/\D+/g, ''));
+    if (!Number.isNaN(num) && v !== "") {
+      data[num] = v;
+    }
+  }
+
+  const indices = Object.keys(data).map(Number);
+  if (!indices.length) return;
+
+  const maxIndex = Math.max(...indices);
+  const rowCount = Math.ceil((maxIndex + 1) / COLUMNS);
+
+  for (let r = 0; r < rowCount; r++) {
+    const start = r * COLUMNS;
+
+    // ✅ ONLY render rows that have at least one value
+    let hasData = false;
+    for (let c = 0; c < COLUMNS; c++) {
+      if (data[start + c]) {
+        hasData = true;
+        break;
       }
-      return name;
+    }
+    if (!hasData) continue;
+
+    const tr = document.createElement('tr');
+
+    for (let c = 0; c < COLUMNS; c++) {
+      const idx = start + c;
+      const td = document.createElement('td');
+      td.dataset.index = idx;
+      td.textContent = data[idx] || '';
+      td.ondblclick = () => editCell(td);
+      tr.appendChild(td);
     }
 
-    async function loadData() {
-      const tbody = document.getElementById('tableBody');
-      tbody.innerHTML = '';
+    tbody.appendChild(tr);
+  }
 
-      let data = {};
-      try {
-        const res = await fetch('/api/data');
-        data = await res.json();
-      } catch (e) {
-        console.error('Failed to load data:', e);
-      }
+  nextIndex = rowCount * COLUMNS;
+}
 
-      const entries = Object.entries(data)
-          .map(([k, v]) => {
-    const num = Number(String(k).replace(/\D+/g, '')); // ✅ extract digits
-    return Number.isNaN(num) ? null : [num, v];
-      })
-      .filter(Boolean)
-      .sort((a, b) => a[0] - b[0]);
+document.addEventListener('DOMContentLoaded', loadData);
+</script>
 
-      const maxIndex = entries.length
-        ? Math.max(...entries.map(e => e[0]))
-        : -1;
-
-      const rowCount = Math.ceil((maxIndex + 1) / COLUMNS);
-
-      for (let r = 0; r < rowCount; r++) {
-        const tr = document.createElement('tr');
-
-        for (let c = 0; c < COLUMNS; c++) {
-          const cellIndex = r * COLUMNS + c;
-          const td = document.createElement('td');
-          td.dataset.index = cellIndex;
-          td.textContent = data[cellIndex] || '';
-          td.ondblclick = () => editCell(td);
-          tr.appendChild(td);
-        }
-        tbody.appendChild(tr);
-      }
-
-      nextIndex = rowCount * COLUMNS;
-    }
-
-    function editCell(td) {
-      const oldValue = td.textContent;
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.value = oldValue;
-      td.textContent = '';
-      td.appendChild(input);
-      input.focus();
-
-      input.onblur = () => saveEdit(td, input.value);
-      input.onkeydown = e => { if (e.key === 'Enter') input.blur(); };
-    }
-
-    async function saveEdit(td, value) {
-      const index = Number(td.dataset.index);
-      td.textContent = value;
-
-      await fetch('/api/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          index,
-          value,
-          editedBy: getEditorName()
-        })
-      });
-    }
-
-    async function addRow() {
-      const tbody = document.getElementById('tableBody');
-      const tr = document.createElement('tr');
-      const editedBy = getEditorName();
-
-      for (let c = 0; c < COLUMNS; c++) {
-        const td = document.createElement('td');
-        td.dataset.index = nextIndex++;
-        td.textContent = '';
-        td.ondblclick = () => editCell(td);
-        tr.appendChild(td);
-
-        await fetch('/api/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            index: Number(td.dataset.index),
-            value: '',
-            editedBy
-          })
-        });
-      }
-
-      tbody.appendChild(tr);
-    }
-
-    function removeRow() {
-      const tbody = document.getElementById('tableBody');
-      if (!tbody.rows.length) return;
-      tbody.deleteRow(-1);
-      nextIndex -= COLUMNS;
-    }
-
-    window.addEventListener('DOMContentLoaded', loadData);
-  </script>
 
   <!-- =========================
        Barcode
