@@ -1,14 +1,5 @@
 // server.js
 require('dotenv').config();
-console.log('✅ server.js loaded');
-
-app.get('/_whoami', (_req, res) => {
-  res.json({
-    file: 'server.js',
-    version: 'cells-check-present',
-    time: new Date().toISOString()
-  });
-});
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
@@ -22,6 +13,16 @@ const app = express();
 app.use(express.json({ limit: '10kb' }));
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
+
+console.log('✅ server.js loaded');
+
+app.get('/_whoami', (_req, res) => {
+  res.json({
+    file: 'server.js',
+    version: 'cells-check-present',
+    time: new Date().toISOString()
+  });
+});
 
 // Optional bearer token auth
 const AUTH_TOKEN = process.env.AUTH_TOKEN;
