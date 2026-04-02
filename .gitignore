@@ -8,3 +8,4 @@ backup_*.sql
 node_modules/
 .env
 backups/
+data.json
