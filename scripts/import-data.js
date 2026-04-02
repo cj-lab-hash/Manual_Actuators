@@ -1,32 +1,54 @@
+require('dotenv').config();
+const fs = require('fs');
+const { Pool } = require('pg');
 
-// scripts/import-data.js
-// One-time importer to load ./data.json into PostgreSQL
-const path = require('path');
-const { pool } = require('../db');
-
-async function main() {
-  const dataPath = path.join(process.cwd(), 'data.json');
-  let payload;
-  try {
-    payload = require(dataPath);
-  } catch (e) {
-    console.error('Could not load data.json at', dataPath);
-    process.exit(1);
-  }
-
-  const entries = Object.entries(payload);
-  console.log(`Importing ${entries.length} items...`);
-  for (const [id, value] of entries) {
-    await pool.query(
-      'INSERT INTO cells (id, value) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value',
-      [id, value]
-    );
-  }
-  console.log('Import complete.');
-  await pool.end();
+if (!process.env.DATABASE_URL) {
+  console.error('❌ DATABASE_URL not set');
+  process.exit(1);
 }
 
-main().catch((err) => {
-  console.error('Import failed:', err);
-  process.exit(1);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
 });
+
+async function run() {
+  const raw = fs.readFileSync('./data.json', 'utf-8');
+  const data = JSON.parse(raw);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      "SELECT set_config('app.user', $1, true)",
+      ['local zip import']
+    );
+
+    let count = 0;
+
+    for (const [index, value] of Object.entries(data)) {
+      const cellId = `cells#${index}`;
+      await client.query(
+        `
+        INSERT INTO cells (id, value)
+        VALUES ($1, $2)
+        ON CONFLICT (id)
+        DO UPDATE SET value = EXCLUDED.value
+        `,
+        [cellId, String(value)]
+      );
+      count++;
+    }
+
+    await client.query('COMMIT');
+    console.log(`✅ Imported ${count} cells`);
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('❌ Import failed:', e);
+  } finally {
+    client.release();
+    process.exit(0);
+  }
+}
+
+run();
