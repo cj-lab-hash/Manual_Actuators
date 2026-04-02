@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Manual Actuators</title>
+
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" href="hand.png" type="image/x-icon" />
 
@@ -13,7 +14,11 @@
       user-select: text;
     }
     #badge-container {
-      pointer-events: none; /* prevent overlay blocking table interaction */
+      pointer-events: none;
+    }
+    input {
+      font-size: inherit;
+      font-family: inherit;
     }
   </style>
 </head>
@@ -57,6 +62,12 @@
     </table>
   </div>
 
+  <!-- ✅ Inject AUTH_TOKEN from server -->
+  <script src="/config.js"></script>
+
+  <!-- =======================
+       App Logic
+  ======================== -->
   <script>
     const COLUMNS = 4;
     let nextIndex = 0;
@@ -70,6 +81,12 @@
       return name;
     }
 
+    function authHeaders() {
+      return window.AUTH_TOKEN
+        ? { Authorization: 'Bearer ' + window.AUTH_TOKEN }
+        : {};
+    }
+
     async function loadData() {
       const tbody = document.getElementById('tableBody');
       tbody.innerHTML = '';
@@ -78,11 +95,12 @@
       try {
         const res = await fetch('/api/data');
         raw = await res.json();
-      } catch {
+      } catch (e) {
+        console.error(e);
         return;
       }
 
-      // Normalize keys: cell17 -> 17
+      // Normalize keys: cells#12 → 12
       const data = {};
       for (const [k, v] of Object.entries(raw)) {
         const n = Number(String(k).replace(/\D+/g, ''));
@@ -105,6 +123,7 @@
         if (!hasData) continue;
 
         const tr = document.createElement('tr');
+
         for (let c = 0; c < COLUMNS; c++) {
           const idx = base + c;
           const td = document.createElement('td');
@@ -113,6 +132,7 @@
           td.ondblclick = () => editCell(td);
           tr.appendChild(td);
         }
+
         tbody.appendChild(tr);
       }
 
@@ -143,7 +163,10 @@
 
         await fetch('/api/save', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeaders()
+          },
           body: JSON.stringify({
             index: Number(td.dataset.index),
             value: newVal,
@@ -167,7 +190,10 @@
 
         await fetch('/api/save', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeaders()
+          },
           body: JSON.stringify({
             index: Number(td.dataset.index),
             value: '',
@@ -175,6 +201,7 @@
           })
         });
       }
+
       tbody.appendChild(tr);
     }
 
@@ -188,6 +215,9 @@
     document.addEventListener('DOMContentLoaded', loadData);
   </script>
 
+  <!-- =======================
+       Barcode
+  ======================== -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script>
     const UNIQUE_ID = "CJ-MA-2026-02-28";
