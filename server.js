@@ -179,11 +179,13 @@ app.get("/api/data", async (_req, res) => {
     `);
 
     const data = {};
-    for (const r of rows) {
-      data[r.id.replace("cells#", "")] = r.value;
-    }
-
-    res.json(data);
+for (const r of rows) {
+  const match = String(r.id).match(/\d+/);   // extracts "12" from "cell12" or "cells#12"
+  if (!match) continue;
+  const idx = match[0];
+  data[idx] = r.value ?? '';
+}
+res.json(data);
   } catch (err) {
     console.error("❌ /api/data error:", err);
     res.status(500).json({ error: err.message });
