@@ -9,3 +9,7 @@ node_modules/
 .env
 backups/
 data.json
+# Database backups
+*.dump
+*.sql
+db_backups/
