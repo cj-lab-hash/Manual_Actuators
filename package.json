@@ -5,7 +5,8 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "seed": "node import-data.js"
+    "seed": "node import-data.js",
+    "export": "node export-data.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
