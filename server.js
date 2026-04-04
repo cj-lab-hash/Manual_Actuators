@@ -1,41 +1,60 @@
 // server.js
-require('dotenv').config();
+require("dotenv").config();
 
-const express = require('express');
-const path = require('path');
-const cors = require('cors');
-const { pool } = require('./db');
+const express = require("express");
+const path = require("path");
+const cors = require("cors");
+const { pool } = require("./db");
 
 const app = express();
+app.set("trust proxy", 1);
 
 /* ===========================================
-   Inject AUTH_TOKEN into frontend (Render-safe)
+   Basic middleware
 =========================================== */
-app.get('/config.js', (_req, res) => {
-  res.type('application/javascript');
-  res.send(`window.AUTH_TOKEN = "${process.env.AUTH_TOKEN || ''}";`);
+app.use(express.json({ limit: "10kb" }));
+app.use(cors());
+
+// Simple request logger (helps debug why nothing is being called)
+app.use((req, _res, next) => {
+  if (req.path.startsWith("/api") || req.path === "/config.js") {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  }
+  next();
 });
 
 /* ===========================================
-   Middleware
+   Inject AUTH_TOKEN into frontend
 =========================================== */
-app.use(express.json({ limit: '10kb' }));
-app.use(cors());
-app.use(express.static(path.join(__dirname, 'public')));
+app.get("/config.js", (_req, res) => {
+  res.type("application/javascript");
+  res.send(`window.AUTH_TOKEN = "${process.env.AUTH_TOKEN || ""}";`);
+});
+
+/* ===========================================
+   Serve static frontend
+=========================================== */
+const publicDir = path.join(__dirname, "public");
+app.use(express.static(publicDir));
 
 /* ===========================================
    Auth (protect write operations only)
 =========================================== */
 const AUTH_TOKEN = process.env.AUTH_TOKEN;
 
+function getBearerToken(req) {
+  const auth = req.headers["authorization"] || "";
+  const parts = auth.split(" ");
+  if (parts.length === 2 && parts[0].toLowerCase() === "bearer") return parts[1];
+  return null;
+}
+
 if (AUTH_TOKEN) {
   app.use((req, res, next) => {
-    // Allow all GET requests (read-only)
-    if (req.method === 'GET') return next();
-
-    const token = req.headers['authorization']?.split(' ')[1];
+    if (req.method === "GET") return next(); // read-only allowed
+    const token = getBearerToken(req);
     if (token !== AUTH_TOKEN) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ error: "Unauthorized" });
     }
     next();
   });
@@ -45,12 +64,15 @@ if (AUTH_TOKEN) {
    Database Schema Init
 =========================================== */
 async function initDatabase() {
-  const schema = `
+  // Run each statement separately for reliability
+  const statements = [
+    `
     CREATE TABLE IF NOT EXISTS cells (
       id TEXT PRIMARY KEY,
       value TEXT
     );
-
+    `,
+    `
     CREATE TABLE IF NOT EXISTS cells_audit (
       audit_id BIGSERIAL PRIMARY KEY,
       cell_id TEXT NOT NULL,
@@ -60,7 +82,8 @@ async function initDatabase() {
       old_value TEXT,
       new_value TEXT
     );
-
+    `,
+    `
     CREATE OR REPLACE FUNCTION audit_cells_changes()
     RETURNS TRIGGER AS $$
     DECLARE actor TEXT := current_setting('app.user', true);
@@ -75,14 +98,30 @@ async function initDatabase() {
       RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
-
+    `,
+    `
     DROP TRIGGER IF EXISTS trg_audit_cells ON cells;
+    `,
+    `
     CREATE TRIGGER trg_audit_cells
     AFTER INSERT OR UPDATE ON cells
     FOR EACH ROW EXECUTE FUNCTION audit_cells_changes();
-  `;
+    `,
+  ];
 
-  await pool.query(schema);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const sql of statements) await client.query(sql);
+    await client.query("COMMIT");
+    console.log("✅ Database schema ready.");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("❌ initDatabase error:", err);
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /* ===========================================
@@ -90,22 +129,23 @@ async function initDatabase() {
 =========================================== */
 
 // Save or update a cell
-app.post('/api/save', async (req, res) => {
+app.post("/api/save", async (req, res) => {
   const { index, value, editedBy } = req.body;
 
-  if (typeof index !== 'number' || typeof value !== 'string') {
-    return res.status(400).json({ error: 'Invalid payload' });
+  if (!Number.isInteger(index) || typeof value !== "string") {
+    return res.status(400).json({ error: "Invalid payload" });
   }
 
   const cellId = `cells#${index}`;
   const client = await pool.connect();
 
   try {
-    await client.query('BEGIN');
-    await client.query(
-      `SELECT set_config('app.user', $1, true)`,
-      [editedBy || 'unknown']
-    );
+    await client.query("BEGIN");
+
+    // Set actor for audit trigger
+    await client.query(`SELECT set_config('app.user', $1, true)`, [
+      editedBy || "unknown",
+    ]);
 
     await client.query(
       `
@@ -117,11 +157,11 @@ app.post('/api/save', async (req, res) => {
       [cellId, value]
     );
 
-    await client.query('COMMIT');
+    await client.query("COMMIT");
     res.json({ success: true });
   } catch (err) {
-    await client.query('ROLLBACK');
-    console.error(err);
+    await client.query("ROLLBACK");
+    console.error("❌ /api/save error:", err);
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
@@ -129,39 +169,80 @@ app.post('/api/save', async (req, res) => {
 });
 
 // Load all cell data
-app.get('/api/data', async (_req, res) => {
+app.get("/api/data", async (_req, res) => {
   const client = await pool.connect();
-
   try {
-    await client.query('BEGIN');
-
     const { rows } = await client.query(`
       SELECT id, value
       FROM cells
-      ORDER BY
-        regexp_replace(id, '\\D', '', 'g')::int
+      ORDER BY regexp_replace(id, '\\D', '', 'g')::int
     `);
-
-    await client.query('COMMIT');
 
     const data = {};
     for (const r of rows) {
-      data[r.id.replace('cells#', '')] = r.value;
+      data[r.id.replace("cells#", "")] = r.value;
     }
 
     res.json(data);
   } catch (err) {
-    await client.query('ROLLBACK');
-    console.error(err);
+    console.error("❌ /api/data error:", err);
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
   }
 });
+// Delete a range of cells (used by remove row)
+app.post("/api/deleteRange", async (req, res) => {
+  const { startIndex, count, editedBy } = req.body;
+
+  if (!Number.isInteger(startIndex) || !Number.isInteger(count) || count <= 0) {
+    return res.status(400).json({ error: "Invalid payload" });
+  }
+
+  const ids = [];
+  for (let i = 0; i < count; i++) {
+    ids.push(`cells#${startIndex + i}`);
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`SELECT set_config('app.user', $1, true)`, [
+      editedBy || "unknown",
+    ]);
+
+    await client.query(`DELETE FROM cells WHERE id = ANY($1::text[])`, [ids]);
+
+    await client.query("COMMIT");
+    res.json({ success: true, deleted: ids.length });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("❌ /api/deleteRange error:", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+// Optional: quick debug endpoint to confirm DB connectivity
+app.get("/api/debug/db", async (_req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT now() AS server_time");
+    res.json({ ok: true, server_time: rows[0].server_time });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 // Health check
-app.get('/healthz', (_req, res) => {
-  res.json({ status: 'ok' });
+app.get("/healthz", (_req, res) => res.json({ status: "ok" }));
+
+/* ===========================================
+   SPA fallback (serves index.html for non-API routes)
+   This ensures refresh doesn't 404 on Render.
+=========================================== */
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api")) return next();
+  res.sendFile(path.join(publicDir, "index.html"));
 });
 
 /* ===========================================
@@ -171,13 +252,11 @@ const PORT = process.env.PORT || 10000;
 
 (async () => {
   try {
-    console.log('🚀 Starting application...');
+    console.log("🚀 Starting application...");
     await initDatabase();
-    app.listen(PORT, () => {
-      console.log(`✅ Server running on port ${PORT}`);
-    });
+    app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
   } catch (err) {
-    console.error('❌ Fatal startup error:', err);
+    console.error("❌ Fatal startup error:", err);
     process.exit(1);
   }
 })();

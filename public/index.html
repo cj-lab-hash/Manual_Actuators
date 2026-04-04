@@ -69,99 +69,98 @@
        App Logic
   ======================== -->
   <script>
-    const COLUMNS = 4;
-    let nextIndex = 0;
+  const COLUMNS = 4;
+  let nextIndex = 0;
 
-    function getEditorName() {
-      let name = localStorage.getItem('editorName');
-      if (!name) {
-        name = prompt('Enter your name (for change tracking):') || 'unknown';
-        localStorage.setItem('editorName', name);
+  function getEditorName() {
+    let name = localStorage.getItem('editorName');
+    if (!name) {
+      name = prompt('Enter your name (for change tracking):') || 'unknown';
+      localStorage.setItem('editorName', name);
+    }
+    return name;
+  }
+
+  function authHeaders() {
+    return window.AUTH_TOKEN
+      ? { Authorization: 'Bearer ' + window.AUTH_TOKEN }
+      : {};
+  }
+
+  async function loadData() {
+    const tbody = document.getElementById('tableBody');
+    tbody.innerHTML = '';
+
+    let raw = {};
+    try {
+      const res = await fetch('/api/data', { cache: 'no-store' });
+      raw = await res.json();
+    } catch (e) {
+      console.error('Failed to load /api/data', e);
+      return;
+    }
+
+    // raw keys are "0", "1", ... values can be "" (empty)
+    const keys = Object.keys(raw)
+      .map(k => Number(k))
+      .filter(n => Number.isInteger(n));
+
+    if (!keys.length) {
+      nextIndex = 0;
+      return;
+    }
+
+    const maxIndex = Math.max(...keys);
+    const rowCount = Math.ceil((maxIndex + 1) / COLUMNS);
+
+    for (let r = 0; r < rowCount; r++) {
+      const tr = document.createElement('tr');
+      const base = r * COLUMNS;
+
+      for (let c = 0; c < COLUMNS; c++) {
+        const idx = base + c;
+        const td = document.createElement('td');
+        td.dataset.index = idx;
+
+        // IMPORTANT: show even empty-string values
+        td.textContent = Object.prototype.hasOwnProperty.call(raw, String(idx))
+          ? raw[String(idx)]
+          : '';
+
+        td.ondblclick = () => editCell(td);
+        tr.appendChild(td);
       }
-      return name;
+
+      tbody.appendChild(tr);
     }
 
-    function authHeaders() {
-      return window.AUTH_TOKEN
-        ? { Authorization: 'Bearer ' + window.AUTH_TOKEN }
-        : {};
-    }
+    nextIndex = rowCount * COLUMNS;
+  }
 
-    async function loadData() {
-      const tbody = document.getElementById('tableBody');
-      tbody.innerHTML = '';
+  function editCell(td) {
+    if (td.querySelector('input')) return;
 
-      let raw = {};
+    const oldVal = td.textContent;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = oldVal;
+    input.style.width = '100%';
+
+    td.textContent = '';
+    td.appendChild(input);
+    setTimeout(() => input.focus(), 0);
+
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') input.blur();
+      if (e.key === 'Escape') td.textContent = oldVal;
+    });
+
+    input.addEventListener('blur', async () => {
+      const newVal = input.value;
+      td.textContent = newVal;
+
       try {
-        const res = await fetch('/api/data');
-        raw = await res.json();
-      } catch (e) {
-        console.error(e);
-        return;
-      }
-
-      // Normalize keys: cells#12 → 12
-      const data = {};
-      for (const [k, v] of Object.entries(raw)) {
-        const n = Number(String(k).replace(/\D+/g, ''));
-        if (!Number.isNaN(n)) data[n] = v;
-      }
-
-      const indices = Object.keys(data).map(Number);
-      if (!indices.length) return;
-
-      const maxIndex = Math.max(...indices);
-      const rowCount = Math.ceil((maxIndex + 1) / COLUMNS);
-
-      for (let r = 0; r < rowCount; r++) {
-        const base = r * COLUMNS;
-
-        let hasData = false;
-        for (let c = 0; c < COLUMNS; c++) {
-          if (data[base + c]) hasData = true;
-        }
-        if (!hasData) continue;
-
-        const tr = document.createElement('tr');
-
-        for (let c = 0; c < COLUMNS; c++) {
-          const idx = base + c;
-          const td = document.createElement('td');
-          td.dataset.index = idx;
-          td.textContent = data[idx] || '';
-          td.ondblclick = () => editCell(td);
-          tr.appendChild(td);
-        }
-
-        tbody.appendChild(tr);
-      }
-
-      nextIndex = rowCount * COLUMNS;
-    }
-
-    function editCell(td) {
-      if (td.querySelector('input')) return;
-
-      const oldVal = td.textContent;
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.value = oldVal;
-      input.style.width = '100%';
-
-      td.textContent = '';
-      td.appendChild(input);
-      setTimeout(() => input.focus(), 0);
-
-      input.addEventListener('keydown', e => {
-        if (e.key === 'Enter') input.blur();
-        if (e.key === 'Escape') td.textContent = oldVal;
-      });
-
-      input.addEventListener('blur', async () => {
-        const newVal = input.value;
-        td.textContent = newVal;
-
-        await fetch('/api/save', {
+        const res = await fetch('/api/save', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -173,22 +172,41 @@
             editedBy: getEditorName()
           })
         });
-      });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.error || 'Save failed (check AUTH_TOKEN)');
+          td.textContent = oldVal; // rollback UI
+        }
+      } catch (e) {
+        console.error(e);
+        alert('Network error while saving.');
+        td.textContent = oldVal; // rollback UI
+      }
+    });
+  }
+
+  async function addRow() {
+    const tbody = document.getElementById('tableBody');
+    const tr = document.createElement('tr');
+    const editor = getEditorName();
+
+    // Create cells in UI first
+    const tds = [];
+    for (let c = 0; c < COLUMNS; c++) {
+      const td = document.createElement('td');
+      td.dataset.index = nextIndex++;
+      td.textContent = '';
+      td.ondblclick = () => editCell(td);
+      tr.appendChild(td);
+      tds.push(td);
     }
+    tbody.appendChild(tr);
 
-    async function addRow() {
-      const tbody = document.getElementById('tableBody');
-      const tr = document.createElement('tr');
-      const editor = getEditorName();
-
-      for (let c = 0; c < COLUMNS; c++) {
-        const td = document.createElement('td');
-        td.dataset.index = nextIndex++;
-        td.textContent = '';
-        td.ondblclick = () => editCell(td);
-        tr.appendChild(td);
-
-        await fetch('/api/save', {
+    // Save all 4 cells (in parallel)
+    try {
+      const saves = tds.map(td =>
+        fetch('/api/save', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -199,21 +217,57 @@
             value: '',
             editedBy: editor
           })
-        });
+        })
+      );
+
+      const results = await Promise.all(saves);
+      const bad = results.find(r => !r.ok);
+      if (bad) {
+        const err = await bad.json().catch(() => ({}));
+        alert(err.error || 'Save failed (check AUTH_TOKEN)');
       }
+    } catch (e) {
+      console.error(e);
+      alert('Network error while adding row.');
+    }
+  }
+async function removeRow() {
+  const tbody = document.getElementById('tableBody');
+  if (!tbody.rows.length) return;
 
-      tbody.appendChild(tr);
+  // last row start index
+  const startIndex = nextIndex - COLUMNS;
+  const editor = getEditorName();
+
+  try {
+    const res = await fetch('/api/deleteRange', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders()
+      },
+      body: JSON.stringify({
+        startIndex,
+        count: COLUMNS,
+        editedBy: editor
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || 'Delete failed');
+      return;
     }
 
-    function removeRow() {
-      const tbody = document.getElementById('tableBody');
-      if (!tbody.rows.length) return;
-      tbody.deleteRow(-1);
-      nextIndex -= COLUMNS;
-    }
-
-    document.addEventListener('DOMContentLoaded', loadData);
-  </script>
+    tbody.deleteRow(-1);
+    nextIndex -= COLUMNS;
+  } catch (e) {
+    console.error(e);
+    alert('Network error while deleting row.');
+  }
+}
+  document.addEventListener('DOMContentLoaded', loadData);
+</script>
 
   <!-- =======================
        Barcode
