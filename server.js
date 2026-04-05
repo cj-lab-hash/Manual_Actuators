@@ -6,10 +6,9 @@ const path = require("path");
 const cors = require("cors");
 const { pool } = require("./db");
 
-db.query("SHOW search_path;")
+pool.query("SHOW search_path;")
   .then(r => console.log("search_path =", r.rows[0].search_path))
   .catch(err => console.error("SHOW search_path failed:", err));
-
 const app = express();
 app.set("trust proxy", 1);
 
