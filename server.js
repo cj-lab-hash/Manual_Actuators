@@ -226,6 +226,28 @@ app.post("/api/deleteRange", async (req, res) => {
     client.release();
   }
 });
+
+// Get recent audit entries for cells
+app.get('/api/audit/cells', async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit || '100', 10), 500);
+
+  try {
+    const { rows } = await pool.query(
+      `
+      SELECT audit_id, cell_id, op, changed_by, changed_at, old_value, new_value
+      FROM manual_actuators.cells_audit
+      ORDER BY changed_at DESC
+      LIMIT $1
+      `,
+      [limit]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Optional: quick debug endpoint to confirm DB connectivity
 app.get("/api/debug/db", async (_req, res) => {
   try {
