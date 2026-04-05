@@ -6,9 +6,7 @@ const path = require("path");
 const cors = require("cors");
 const { pool } = require("./db");
 
-pool.query("SHOW search_path;")
-  .then(r => console.log("search_path =", r.rows[0].search_path))
-  .catch(err => console.error("SHOW search_path failed:", err));
+
 const app = express();
 app.set("trust proxy", 1);
 
@@ -259,6 +257,12 @@ const PORT = process.env.PORT || 10000;
   try {
     console.log("🚀 Starting application...");
     await initDatabase();
+
+
+const r = await pool.query("SHOW search_path;");
+    console.log("search_path =", r.rows[0].search_path);
+
+
     app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
   } catch (err) {
     console.error("❌ Fatal startup error:", err);
