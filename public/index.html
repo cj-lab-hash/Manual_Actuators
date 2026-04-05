@@ -72,12 +72,16 @@
   const COLUMNS = 4;
   let nextIndex = 0;
 
-  function getEditorName() {
+  async function getEditorName() {
     let name = localStorage.getItem('editorName');
-    if (!name) {
-      name = prompt('Enter your name (for change tracking):') || 'unknown';
-      localStorage.setItem('editorName', name);
-    }
+    if (name) return name;
+   
+  const res = await fetch('/api/editors');
+  const editors = await res.json();
+  const active = editors.filter(e => e.active).map(e => e.name);
+
+  name = prompt('Select your name:\n' + active.join('\n')) || '';
+  localStorage.setItem('editorName', name);
     return name;
   }
 

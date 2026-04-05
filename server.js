@@ -24,6 +24,54 @@ app.use((req, _res, next) => {
   next();
 });
 
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
+
+function getBearerToken(req) {
+  const auth = req.headers['authorization'] || '';
+  const parts = auth.split(' ');
+  if (parts.length === 2 && parts[0].toLowerCase() === 'bearer') return parts[1];
+  return null;
+}
+
+function requireAdmin(req, res, next) {
+  const token = getBearerToken(req);
+  if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) {
+    return res.status(403).json({ error: 'Admin only' });
+  }
+  next();
+}
+
+async function getEditor(name) {
+  const { rows } = await pool.query(
+    `SELECT name, role, active
+     FROM manual_actuators.editors
+     WHERE name = $1`,
+    [name]
+  );
+  return rows[0] || null;
+}
+
+async function requireAllowedEditor(req, res, next) {
+  const editedBy = req.body?.editedBy;
+
+  if (!editedBy || typeof editedBy !== 'string') {
+    return res.status(400).json({ error: 'editedBy is required' });
+  }
+
+  try {
+    const editor = await getEditor(editedBy);
+    if (!editor || !editor.active) {
+      return res.status(403).json({ error: 'Editor not allowed' });
+    }
+    // attach for downstream use if needed
+    req.editor = editor;
+    next();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Editor check failed' });
+  }
+}
+
 /* ===========================================
    Inject AUTH_TOKEN into frontend
 =========================================== */
@@ -130,23 +178,19 @@ async function initDatabase() {
 =========================================== */
 
 // Save or update a cell
-app.post("/api/save", async (req, res) => {
+app.post('/api/save', requireAllowedEditor, async (req, res) => {
   const { index, value, editedBy } = req.body;
 
-  if (!Number.isInteger(index) || typeof value !== "string") {
-    return res.status(400).json({ error: "Invalid payload" });
+  if (!Number.isInteger(index) || typeof value !== 'string') {
+    return res.status(400).json({ error: 'Invalid payload' });
   }
 
   const cellId = `cells#${index}`;
   const client = await pool.connect();
 
   try {
-    await client.query("BEGIN");
-
-    // Set actor for audit trigger
-    await client.query(`SELECT set_config('app.user', $1, true)`, [
-      editedBy || "unknown",
-    ]);
+    await client.query('BEGIN');
+    await client.query(`SELECT set_config('app.user', $1, true)`, [editedBy]);
 
     await client.query(
       `
@@ -158,11 +202,11 @@ app.post("/api/save", async (req, res) => {
       [cellId, value]
     );
 
-    await client.query("COMMIT");
+    await client.query('COMMIT');
     res.json({ success: true });
   } catch (err) {
-    await client.query("ROLLBACK");
-    console.error("❌ /api/save error:", err);
+    await client.query('ROLLBACK');
+    console.error(err);
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
@@ -195,7 +239,7 @@ res.json(data);
   }
 });
 // Delete a range of cells (used by remove row)
-app.post("/api/deleteRange", async (req, res) => {
+app.post("/api/deleteRange", requireAllowedEditor, async (req, res) => {
   const { startIndex, count, editedBy } = req.body;
 
   if (!Number.isInteger(startIndex) || !Number.isInteger(count) || count <= 0) {
@@ -226,6 +270,60 @@ app.post("/api/deleteRange", async (req, res) => {
     client.release();
   }
 });
+// Get list of editors (for admin UI)
+app.get('/api/editors', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT name, role, active, created_at
+       FROM manual_actuators.editors
+       ORDER BY name`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+// Add or update an editor (admin only)
+app.post('/api/editors', requireAdmin, async (req, res) => {
+  const { name, role = 'editor', active = true } = req.body || {};
+  if (!name || typeof name !== 'string') {
+    return res.status(400).json({ error: 'name is required' });
+  }
+
+  try {
+    await pool.query(
+      `INSERT INTO manual_actuators.editors(name, role, active)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (name)
+       DO UPDATE SET role = EXCLUDED.role, active = EXCLUDED.active`,
+      [name.trim(), role, !!active]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+// Disable an editor (admin only)
+app.post('/api/editors/disable', requireAdmin, async (req, res) => {
+  const { name } = req.body || {};
+  if (!name) return res.status(400).json({ error: 'name is required' });
+
+  try {
+    await pool.query(
+      `UPDATE manual_actuators.editors
+       SET active = false
+       WHERE name = $1`,
+      [name.trim()]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // Get recent audit entries for cells
 app.get('/api/audit/cells', async (req, res) => {
