@@ -63,7 +63,7 @@
   </div>
 
   <!-- ✅ Inject AUTH_TOKEN from server -->
-  <script src="/config.js"></script>
+ 
 
   <!-- =======================
        App Logic
@@ -73,23 +73,39 @@
   let nextIndex = 0;
 
   async function getEditorName() {
-    let name = localStorage.getItem('editorName');
-    if (name) return name;
-   
-  const res = await fetch('/api/editors');
+  let name = localStorage.getItem("editorName");
+  if (name && name.trim()) return name.trim();
+
+  const res = await fetch("/api/editors");
   const editors = await res.json();
   const active = editors.filter(e => e.active).map(e => e.name);
 
-  name = prompt('Select your name:\n' + active.join('\n')) || '';
-  localStorage.setItem('editorName', name);
+  while (true) {
+    name = prompt("Select your name:\n" + active.join("\n")) || "";
+    name = name.trim();
+    if (!name) {
+      alert("Name is required to edit.");
+      continue;
+    }
+    localStorage.setItem("editorName", name);
     return name;
   }
+}
 
-  function authHeaders() {
-    return window.AUTH_TOKEN
-      ? { Authorization: 'Bearer ' + window.AUTH_TOKEN }
-      : {};
+  function ensureAuthToken() {
+  let t = localStorage.getItem("authToken");
+  if (!t) {
+    t = prompt("Enter AUTH token (required for edits):") || "";
+    t = t.trim();
+    if (t) localStorage.setItem("authToken", t);
   }
+  return t;
+}
+
+function authHeaders() {
+  const t = localStorage.getItem("authToken") || "";
+  return t ? { Authorization: "Bearer " + t } : {};
+}
 
   async function loadData() {
     const tbody = document.getElementById('tableBody');

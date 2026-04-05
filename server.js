@@ -6,7 +6,6 @@ const path = require("path");
 const cors = require("cors");
 const { pool } = require("./db");
 
-
 const app = express();
 app.set("trust proxy", 1);
 
@@ -16,27 +15,45 @@ app.set("trust proxy", 1);
 app.use(express.json({ limit: "10kb" }));
 app.use(cors());
 
-// Simple request logger (helps debug why nothing is being called)
+// Simple request logger
 app.use((req, _res, next) => {
-  if (req.path.startsWith("/api") || req.path === "/config.js") {
+  if (req.path.startsWith("/api")) {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   }
   next();
 });
 
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
+/* ===========================================
+   Tokens
+=========================================== */
+const AUTH_TOKEN = process.env.AUTH_TOKEN || "";
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
 
+/* ===========================================
+   Helpers
+=========================================== */
 function getBearerToken(req) {
-  const auth = req.headers['authorization'] || '';
-  const parts = auth.split(' ');
-  if (parts.length === 2 && parts[0].toLowerCase() === 'bearer') return parts[1];
+  const auth = req.headers["authorization"] || "";
+  const parts = auth.split(" ");
+  if (parts.length === 2 && parts[0].toLowerCase() === "bearer") return parts[1];
   return null;
+}
+
+function requireAuth(req, res, next) {
+  // Only protect write routes (non-GET)
+  if (req.method === "GET") return next();
+
+  const token = getBearerToken(req);
+  if (!AUTH_TOKEN || token !== AUTH_TOKEN) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
 }
 
 function requireAdmin(req, res, next) {
   const token = getBearerToken(req);
   if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) {
-    return res.status(403).json({ error: 'Admin only' });
+    return res.status(403).json({ error: "Admin only" });
   }
   next();
 }
@@ -54,31 +71,22 @@ async function getEditor(name) {
 async function requireAllowedEditor(req, res, next) {
   const editedBy = req.body?.editedBy;
 
-  if (!editedBy || typeof editedBy !== 'string') {
-    return res.status(400).json({ error: 'editedBy is required' });
+  if (!editedBy || typeof editedBy !== "string" || !editedBy.trim()) {
+    return res.status(400).json({ error: "editedBy is required" });
   }
 
   try {
-    const editor = await getEditor(editedBy);
+    const editor = await getEditor(editedBy.trim());
     if (!editor || !editor.active) {
-      return res.status(403).json({ error: 'Editor not allowed' });
+      return res.status(403).json({ error: "Editor not allowed" });
     }
-    // attach for downstream use if needed
     req.editor = editor;
     next();
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Editor check failed' });
+    res.status(500).json({ error: "Editor check failed" });
   }
 }
-
-/* ===========================================
-   Inject AUTH_TOKEN into frontend
-=========================================== */
-app.get("/config.js", (_req, res) => {
-  res.type("application/javascript");
-  res.send(`window.AUTH_TOKEN = "${process.env.AUTH_TOKEN || ""}";`);
-});
 
 /* ===========================================
    Serve static frontend
@@ -87,33 +95,29 @@ const publicDir = path.join(__dirname, "public");
 app.use(express.static(publicDir));
 
 /* ===========================================
-   Auth (protect write operations only)
+   IMPORTANT:
+   Apply AUTH middleware AFTER static so index loads,
+   but BEFORE write API routes.
+   Also: Admin routes are handled separately and should not be blocked by AUTH.
 =========================================== */
-const AUTH_TOKEN = process.env.AUTH_TOKEN;
 
-function getBearerToken(req) {
-  const auth = req.headers["authorization"] || "";
-  const parts = auth.split(" ");
-  if (parts.length === 2 && parts[0].toLowerCase() === "bearer") return parts[1];
-  return null;
-}
+// Admin routes should NOT be blocked by AUTH middleware.
+// We'll enforce admin routes with requireAdmin instead.
+app.use((req, res, next) => {
+  if (!AUTH_TOKEN) return next();
+  if (req.method === "GET") return next();
 
-if (AUTH_TOKEN) {
-  app.use((req, res, next) => {
-    if (req.method === "GET") return next(); // read-only allowed
-    const token = getBearerToken(req);
-    if (token !== AUTH_TOKEN) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    next();
-  });
-}
+  // Allow admin endpoints to pass through to requireAdmin
+  if (req.path.startsWith("/api/editors")) return next();
+
+  // Otherwise require normal AUTH_TOKEN
+  return requireAuth(req, res, next);
+});
 
 /* ===========================================
-   Database Schema Init
+   Database Schema Init (optional/keep)
 =========================================== */
 async function initDatabase() {
-  // Run each statement separately for reliability
   const statements = [
     `
     CREATE TABLE IF NOT EXISTS cells (
@@ -148,9 +152,7 @@ async function initDatabase() {
     END;
     $$ LANGUAGE plpgsql;
     `,
-    `
-    DROP TRIGGER IF EXISTS trg_audit_cells ON cells;
-    `,
+    `DROP TRIGGER IF EXISTS trg_audit_cells ON cells;`,
     `
     CREATE TRIGGER trg_audit_cells
     AFTER INSERT OR UPDATE ON cells
@@ -178,19 +180,19 @@ async function initDatabase() {
 =========================================== */
 
 // Save or update a cell
-app.post('/api/save', requireAllowedEditor, async (req, res) => {
+app.post("/api/save", requireAllowedEditor, async (req, res) => {
   const { index, value, editedBy } = req.body;
 
-  if (!Number.isInteger(index) || typeof value !== 'string') {
-    return res.status(400).json({ error: 'Invalid payload' });
+  if (!Number.isInteger(index) || typeof value !== "string") {
+    return res.status(400).json({ error: "Invalid payload" });
   }
 
   const cellId = `cells#${index}`;
   const client = await pool.connect();
 
   try {
-    await client.query('BEGIN');
-    await client.query(`SELECT set_config('app.user', $1, true)`, [editedBy]);
+    await client.query("BEGIN");
+    await client.query(`SELECT set_config('app.user', $1, true)`, [editedBy.trim()]);
 
     await client.query(
       `
@@ -202,11 +204,11 @@ app.post('/api/save', requireAllowedEditor, async (req, res) => {
       [cellId, value]
     );
 
-    await client.query('COMMIT');
+    await client.query("COMMIT");
     res.json({ success: true });
   } catch (err) {
-    await client.query('ROLLBACK');
-    console.error(err);
+    await client.query("ROLLBACK");
+    console.error("❌ /api/save error:", err);
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
@@ -224,13 +226,13 @@ app.get("/api/data", async (_req, res) => {
     `);
 
     const data = {};
-for (const r of rows) {
-  const match = String(r.id).match(/\d+/);   // extracts "12" from "cell12" or "cells#12"
-  if (!match) continue;
-  const idx = match[0];
-  data[idx] = r.value ?? '';
-}
-res.json(data);
+    for (const r of rows) {
+      const match = String(r.id).match(/\d+/);
+      if (!match) continue;
+      data[match[0]] = r.value ?? "";
+    }
+
+    res.json(data);
   } catch (err) {
     console.error("❌ /api/data error:", err);
     res.status(500).json({ error: err.message });
@@ -238,7 +240,8 @@ res.json(data);
     client.release();
   }
 });
-// Delete a range of cells (used by remove row)
+
+// Delete a range of cells
 app.post("/api/deleteRange", requireAllowedEditor, async (req, res) => {
   const { startIndex, count, editedBy } = req.body;
 
@@ -246,17 +249,12 @@ app.post("/api/deleteRange", requireAllowedEditor, async (req, res) => {
     return res.status(400).json({ error: "Invalid payload" });
   }
 
-  const ids = [];
-  for (let i = 0; i < count; i++) {
-    ids.push(`cells#${startIndex + i}`);
-  }
+  const ids = Array.from({ length: count }, (_, i) => `cells#${startIndex + i}`);
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query(`SELECT set_config('app.user', $1, true)`, [
-      editedBy || "unknown",
-    ]);
+    await client.query(`SELECT set_config('app.user', $1, true)`, [editedBy.trim()]);
 
     await client.query(`DELETE FROM cells WHERE id = ANY($1::text[])`, [ids]);
 
@@ -270,8 +268,9 @@ app.post("/api/deleteRange", requireAllowedEditor, async (req, res) => {
     client.release();
   }
 });
-// Get list of editors (for admin UI)
-app.get('/api/editors', async (_req, res) => {
+
+// Editors list (public read)
+app.get("/api/editors", async (_req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT name, role, active, created_at
@@ -280,15 +279,16 @@ app.get('/api/editors', async (_req, res) => {
     );
     res.json(rows);
   } catch (err) {
-    console.error(err);
+    console.error("❌ /api/editors error:", err);
     res.status(500).json({ error: err.message });
   }
 });
-// Add or update an editor (admin only)
-app.post('/api/editors', requireAdmin, async (req, res) => {
-  const { name, role = 'editor', active = true } = req.body || {};
-  if (!name || typeof name !== 'string') {
-    return res.status(400).json({ error: 'name is required' });
+
+// Add/update editor (admin only)
+app.post("/api/editors", requireAdmin, async (req, res) => {
+  const { name, role = "editor", active = true } = req.body || {};
+  if (!name || typeof name !== "string") {
+    return res.status(400).json({ error: "name is required" });
   }
 
   try {
@@ -301,14 +301,17 @@ app.post('/api/editors', requireAdmin, async (req, res) => {
     );
     res.json({ success: true });
   } catch (err) {
-    console.error(err);
+    console.error("❌ /api/editors POST error:", err);
     res.status(500).json({ error: err.message });
   }
 });
-// Disable an editor (admin only)
-app.post('/api/editors/disable', requireAdmin, async (req, res) => {
+
+// Disable editor (admin only)
+app.post("/api/editors/disable", requireAdmin, async (req, res) => {
   const { name } = req.body || {};
-  if (!name) return res.status(400).json({ error: 'name is required' });
+  if (!name || typeof name !== "string") {
+    return res.status(400).json({ error: "name is required" });
+  }
 
   try {
     await pool.query(
@@ -319,40 +322,8 @@ app.post('/api/editors/disable', requireAdmin, async (req, res) => {
     );
     res.json({ success: true });
   } catch (err) {
-    console.error(err);
+    console.error("❌ /api/editors/disable error:", err);
     res.status(500).json({ error: err.message });
-  }
-});
-
-
-// Get recent audit entries for cells
-app.get('/api/audit/cells', async (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit || '100', 10), 500);
-
-  try {
-    const { rows } = await pool.query(
-      `
-      SELECT audit_id, cell_id, op, changed_by, changed_at, old_value, new_value
-      FROM manual_actuators.cells_audit
-      ORDER BY changed_at DESC
-      LIMIT $1
-      `,
-      [limit]
-    );
-    res.json(rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Optional: quick debug endpoint to confirm DB connectivity
-app.get("/api/debug/db", async (_req, res) => {
-  try {
-    const { rows } = await pool.query("SELECT now() AS server_time");
-    res.json({ ok: true, server_time: rows[0].server_time });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
@@ -360,8 +331,7 @@ app.get("/api/debug/db", async (_req, res) => {
 app.get("/healthz", (_req, res) => res.json({ status: "ok" }));
 
 /* ===========================================
-   SPA fallback (serves index.html for non-API routes)
-   This ensures refresh doesn't 404 on Render.
+   SPA fallback
 =========================================== */
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api")) return next();
@@ -378,10 +348,9 @@ const PORT = process.env.PORT || 10000;
     console.log("🚀 Starting application...");
     await initDatabase();
 
-
-const r = await pool.query("SHOW search_path;");
+    // Optional debug: remove after confirming
+    const r = await pool.query("SHOW search_path;");
     console.log("search_path =", r.rows[0].search_path);
-
 
     app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
   } catch (err) {
