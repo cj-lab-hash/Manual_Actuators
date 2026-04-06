@@ -73,54 +73,53 @@
   let nextIndex = 0;
 
   async function getEditorName() {
-  let name = localStorage.getItem("editorName");
-  if (name && name.trim()) return name.trim();
+    let name = localStorage.getItem("editorName");
+    if (name && name.trim()) return name.trim();
 
-  const res = await fetch("/api/editors");
-  const editors = await res.json();
-  const active = editors.filter(e => e.active).map(e => e.name);
+    const res = await fetch("/api/editors");
+    const editors = await res.json();
+    const active = editors.filter(e => e.active).map(e => e.name);
 
-  while (true) {
-    name = prompt("Select your name:\n" + active.join("\n")) || "";
-    name = name.trim();
-    if (!name) {
-      alert("Name is required to edit.");
-      continue;
+    while (true) {
+      name = prompt("Select your name:\n" + active.join("\n")) || "";
+      name = name.trim();
+      if (!name) {
+        alert("Name is required to edit.");
+        continue;
+      }
+      localStorage.setItem("editorName", name);
+      return name;
     }
-    localStorage.setItem("editorName", name);
-    return name;
   }
-}
 
   function ensureAuthToken() {
-  let t = localStorage.getItem("authToken");
-  if (!t) {
-    t = prompt("Enter AUTH token (required for edits):") || "";
-    t = t.trim();
-    if (t) localStorage.setItem("authToken", t);
+    let t = localStorage.getItem("authToken");
+    if (!t) {
+      t = prompt("Enter AUTH token (required for edits):") || "";
+      t = t.trim();
+      if (t) localStorage.setItem("authToken", t);
+    }
+    return t;
   }
-  return t;
-}
 
-function authHeaders() {
-  const t = localStorage.getItem("authToken") || "";
-  return t ? { Authorization: "Bearer " + t } : {};
-}
+  function authHeaders() {
+    const t = localStorage.getItem("authToken") || "";
+    return t ? { Authorization: "Bearer " + t } : {};
+  }
 
   async function loadData() {
-    const tbody = document.getElementById('tableBody');
-    tbody.innerHTML = '';
+    const tbody = document.getElementById("tableBody");
+    tbody.innerHTML = "";
 
     let raw = {};
     try {
-      const res = await fetch('/api/data', { cache: 'no-store' });
+      const res = await fetch("/api/data", { cache: "no-store" });
       raw = await res.json();
     } catch (e) {
-      console.error('Failed to load /api/data', e);
+      console.error("Failed to load /api/data", e);
       return;
     }
 
-    // raw keys are "0", "1", ... values can be "" (empty)
     const keys = Object.keys(raw)
       .map(k => Number(k))
       .filter(n => Number.isInteger(n));
@@ -134,18 +133,17 @@ function authHeaders() {
     const rowCount = Math.ceil((maxIndex + 1) / COLUMNS);
 
     for (let r = 0; r < rowCount; r++) {
-      const tr = document.createElement('tr');
+      const tr = document.createElement("tr");
       const base = r * COLUMNS;
 
       for (let c = 0; c < COLUMNS; c++) {
         const idx = base + c;
-        const td = document.createElement('td');
+        const td = document.createElement("td");
         td.dataset.index = idx;
 
-        // IMPORTANT: show even empty-string values
         td.textContent = Object.prototype.hasOwnProperty.call(raw, String(idx))
           ? raw[String(idx)]
-          : '';
+          : "";
 
         td.ondblclick = () => editCell(td);
         tr.appendChild(td);
@@ -158,85 +156,98 @@ function authHeaders() {
   }
 
   function editCell(td) {
-    if (td.querySelector('input')) return;
+    if (td.querySelector("input")) return;
 
     const oldVal = td.textContent;
-    const input = document.createElement('input');
-    input.type = 'text';
+    const input = document.createElement("input");
+    input.type = "text";
     input.value = oldVal;
-    input.style.width = '100%';
+    input.style.width = "100%";
 
-    td.textContent = '';
+    td.textContent = "";
     td.appendChild(input);
     setTimeout(() => input.focus(), 0);
 
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Enter') input.blur();
-      if (e.key === 'Escape') td.textContent = oldVal;
+    input.addEventListener("keydown", e => {
+      if (e.key === "Enter") input.blur();
+      if (e.key === "Escape") td.textContent = oldVal;
     });
 
-    input.addEventListener('blur', async () => {
+    input.addEventListener("blur", async () => {
       const newVal = input.value;
       td.textContent = newVal;
 
+      // ✅ Ensure token exists BEFORE writing
+      const token = ensureAuthToken();
+      if (!token) {
+        alert("AUTH token is required to edit.");
+        td.textContent = oldVal;
+        return;
+      }
+
+      // ✅ Must await editor
+      const editedBy = await getEditorName();
+
       try {
-        const res = await fetch('/api/save', {
-          method: 'POST',
+        const res = await fetch("/api/save", {
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            ...authHeaders()
+            "Content-Type": "application/json",
+            ...authHeaders(),
           },
           body: JSON.stringify({
             index: Number(td.dataset.index),
             value: newVal,
-            editedBy: getEditorName()
-          })
+            editedBy,
+          }),
         });
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          alert(err.error || 'Save failed (check AUTH_TOKEN)');
+          alert(err.error || "Save failed");
           td.textContent = oldVal; // rollback UI
         }
       } catch (e) {
         console.error(e);
-        alert('Network error while saving.');
+        alert("Network error while saving.");
         td.textContent = oldVal; // rollback UI
       }
     });
   }
 
   async function addRow() {
-    const tbody = document.getElementById('tableBody');
-    const tr = document.createElement('tr');
-    const editor = getEditorName();
+    const token = ensureAuthToken();
+    if (!token) return;
 
-    // Create cells in UI first
+    const editor = await getEditorName();
+
+    const tbody = document.getElementById("tableBody");
+    const tr = document.createElement("tr");
+
     const tds = [];
     for (let c = 0; c < COLUMNS; c++) {
-      const td = document.createElement('td');
+      const td = document.createElement("td");
       td.dataset.index = nextIndex++;
-      td.textContent = '';
+      td.textContent = "";
       td.ondblclick = () => editCell(td);
       tr.appendChild(td);
       tds.push(td);
     }
     tbody.appendChild(tr);
 
-    // Save all 4 cells (in parallel)
     try {
       const saves = tds.map(td =>
-        fetch('/api/save', {
-          method: 'POST',
+        fetch("/api/save", {
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            ...authHeaders()
+            "Content-Type": "application/json",
+            ...authHeaders(),
           },
           body: JSON.stringify({
             index: Number(td.dataset.index),
-            value: '',
-            editedBy: editor
-          })
+            value: "",
+            editedBy: editor,
+          }),
         })
       );
 
@@ -244,49 +255,58 @@ function authHeaders() {
       const bad = results.find(r => !r.ok);
       if (bad) {
         const err = await bad.json().catch(() => ({}));
-        alert(err.error || 'Save failed (check AUTH_TOKEN)');
+        alert(err.error || "Save failed");
       }
     } catch (e) {
       console.error(e);
-      alert('Network error while adding row.');
+      alert("Network error while adding row.");
     }
   }
-async function removeRow() {
-  const tbody = document.getElementById('tableBody');
-  if (!tbody.rows.length) return;
 
-  // last row start index
-  const startIndex = nextIndex - COLUMNS;
-  const editor = getEditorName();
+  async function removeRow() {
+    const token = ensureAuthToken();
+    if (!token) return;
 
-  try {
-    const res = await fetch('/api/deleteRange', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders()
-      },
-      body: JSON.stringify({
-        startIndex,
-        count: COLUMNS,
-        editedBy: editor
-      })
-    });
+    const editor = await getEditorName();
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      alert(err.error || 'Delete failed');
-      return;
+    const tbody = document.getElementById("tableBody");
+    if (!tbody.rows.length) return;
+
+    const startIndex = nextIndex - COLUMNS;
+
+    try {
+      const res = await fetch("/api/deleteRange", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
+        body: JSON.stringify({
+          startIndex,
+          count: COLUMNS,
+          editedBy: editor,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "Delete failed");
+        return;
+      }
+
+      tbody.deleteRow(-1);
+      nextIndex -= COLUMNS;
+    } catch (e) {
+      console.error(e);
+      alert("Network error while deleting row.");
     }
-
-    tbody.deleteRow(-1);
-    nextIndex -= COLUMNS;
-  } catch (e) {
-    console.error(e);
-    alert('Network error while deleting row.');
   }
-}
-  document.addEventListener('DOMContentLoaded', loadData);
+
+  // ✅ Make functions available to inline onclick=""
+  window.addRow = addRow;
+  window.removeRow = removeRow;
+
+  document.addEventListener("DOMContentLoaded", loadData);
 </script>
 
   <!-- =======================
