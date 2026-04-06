@@ -73,24 +73,23 @@
   let nextIndex = 0;
 
   async function getEditorName() {
-    let name = localStorage.getItem("editorName");
-    if (name && name.trim()) return name.trim();
+  let name = localStorage.getItem("editorName");
+  if (name && name.trim()) return name.trim();
 
-    const res = await fetch("/api/editors");
-    const editors = await res.json();
-    const active = editors.filter(e => e.active).map(e => e.name);
+  while (true) {
+    name = (prompt("Enter your name (must be authorized):") || "").trim();
 
-    while (true) {
-      name = prompt("Select your name:\n" + active.join("\n")) || "";
-      name = name.trim();
-      if (!name) {
-        alert("Name is required to edit.");
-        continue;
-      }
-      localStorage.setItem("editorName", name);
-      return name;
+    if (!name) {
+      alert("Name is required to edit.");
+      continue;
     }
+
+    // Save locally so they don't retype each edit
+    localStorage.setItem("editorName", name);
+    return name;
   }
+}
+
 
   function ensureAuthToken() {
     let t = localStorage.getItem("authToken");
