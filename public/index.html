@@ -62,269 +62,422 @@
     </table>
   </div>
 
-  <!-- ✅ Inject AUTH_TOKEN from server -->
- 
+  <!-- Token Modal -->
+  <div id="tokenModal" style="
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.5);
+    align-items:center;
+    justify-content:center;
+    z-index:9999;
+  ">
+    <div style="
+      background:#fff;
+      padding:16px;
+      border-radius:10px;
+      width:min(420px, 92vw);
+      box-shadow:0 10px 30px rgba(0,0,0,0.2);
+    ">
+      <h3 style="margin:0 0 10px;">Enter AUTH Token</h3>
+      <input id="tokenInput" type="password" placeholder="Paste token here"
+        style="width:100%; padding:10px; font-size:14px;" />
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+        <button type="button" id="tokenCancelBtn">Cancel</button>
+        <button type="button" id="tokenSaveBtn">Save</button>
+      </div>
+      <div style="margin-top:8px; font-size:12px; color:#666;">
+        Token is stored only in this browser.
+      </div>
+    </div>
+  </div>
 
   <!-- =======================
        App Logic
   ======================== -->
   <script>
-  const COLUMNS = 4;
-  let nextIndex = 0;
+    const COLUMNS = 4;
+    let nextIndex = 0;
 
-  async function getEditorName() {
-  let name = localStorage.getItem("editorName");
-  if (name && name.trim()) return name.trim();
+    // ===== localStorage keys =====
+    const LS_AUTH_TOKEN = "authToken";
+    const LS_EDITOR_NAME = "editorName";
+    const LS_EDITOR_AT = "editorNameAt";
 
-  while (true) {
-    name = (prompt("Enter your name (must be authorized):") || "").trim();
+    // Reprompt editor name every hour
+    const EDITOR_TTL_MS = 60 * 60 * 1000;
 
-    if (!name) {
-      alert("Name is required to edit.");
-      continue;
+    // ===== Badge updater =====
+    function updateEditorBadge() {
+      const el = document.getElementById("editorBadge");
+      if (!el) return;
+      const name = (localStorage.getItem(LS_EDITOR_NAME) || "").trim();
+      el.textContent = name || "No User";
     }
 
-    // Save locally so they don't retype each edit
-    localStorage.setItem("editorName", name);
-    return name;
-  }
-}
-
-
-  function ensureAuthToken() {
-    let t = localStorage.getItem("authToken");
-    if (!t) {
-      t = prompt("Enter AUTH token (required for edits):") || "";
-      t = t.trim();
-      if (t) localStorage.setItem("authToken", t);
-    }
-    return t;
-  }
-
-  function authHeaders() {
-    const t = localStorage.getItem("authToken") || "";
-    return t ? { Authorization: "Bearer " + t } : {};
-  }
-
-  async function loadData() {
-    const tbody = document.getElementById("tableBody");
-    tbody.innerHTML = "";
-
-    let raw = {};
-    try {
-      const res = await fetch("/api/data", { cache: "no-store" });
-      raw = await res.json();
-    } catch (e) {
-      console.error("Failed to load /api/data", e);
-      return;
+    // ===== Token helpers =====
+    function authHeaders() {
+      const t = (localStorage.getItem(LS_AUTH_TOKEN) || "").trim();
+      return t ? { Authorization: "Bearer " + t } : {};
     }
 
-    const keys = Object.keys(raw)
-      .map(k => Number(k))
-      .filter(n => Number.isInteger(n));
-
-    if (!keys.length) {
-      nextIndex = 0;
-      return;
+    function clearAuthToken() {
+      localStorage.removeItem(LS_AUTH_TOKEN);
     }
 
-    const maxIndex = Math.max(...keys);
-    const rowCount = Math.ceil((maxIndex + 1) / COLUMNS);
+    function openTokenModal() {
+      const modal = document.getElementById("tokenModal");
+      const input = document.getElementById("tokenInput");
+      const btnSave = document.getElementById("tokenSaveBtn");
+      const btnCancel = document.getElementById("tokenCancelBtn");
 
-    for (let r = 0; r < rowCount; r++) {
-      const tr = document.createElement("tr");
-      const base = r * COLUMNS;
-
-      for (let c = 0; c < COLUMNS; c++) {
-        const idx = base + c;
-        const td = document.createElement("td");
-        td.dataset.index = idx;
-
-        td.textContent = Object.prototype.hasOwnProperty.call(raw, String(idx))
-          ? raw[String(idx)]
-          : "";
-
-        td.ondblclick = () => editCell(td);
-        tr.appendChild(td);
+      if (!modal || !input || !btnSave || !btnCancel) {
+        alert("Token modal missing in HTML.");
+        return Promise.resolve(null);
       }
 
-      tbody.appendChild(tr);
+      modal.style.display = "flex";
+      input.value = "";
+      setTimeout(() => input.focus(), 0);
+
+      return new Promise((resolve) => {
+        const cleanup = () => {
+          btnSave.onclick = null;
+          btnCancel.onclick = null;
+          input.onkeydown = null;
+        };
+
+        btnCancel.onclick = () => {
+          modal.style.display = "none";
+          cleanup();
+          resolve(null);
+        };
+
+        btnSave.onclick = () => {
+          const token = (input.value || "").trim();
+          if (!token) {
+            alert("Token is required.");
+            return;
+          }
+          localStorage.setItem(LS_AUTH_TOKEN, token);
+          modal.style.display = "none";
+          cleanup();
+          resolve(token);
+        };
+
+        input.onkeydown = (e) => {
+          if (e.key === "Enter") btnSave.click();
+          if (e.key === "Escape") btnCancel.click();
+        };
+      });
     }
 
-    nextIndex = rowCount * COLUMNS;
-  }
+    async function ensureAuthToken() {
+      const existing = (localStorage.getItem(LS_AUTH_TOKEN) || "").trim();
+      if (existing) return existing;
+      return await openTokenModal();
+    }
 
-  function editCell(td) {
-    if (td.querySelector("input")) return;
+    // ===== Editor TTL helpers =====
+    function getEditorStamp() {
+      const v = localStorage.getItem(LS_EDITOR_AT);
+      const n = v ? Number(v) : 0;
+      return Number.isFinite(n) ? n : 0;
+    }
 
-    const oldVal = td.textContent;
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = oldVal;
-    input.style.width = "100%";
+    function setEditorStampNow() {
+      localStorage.setItem(LS_EDITOR_AT, String(Date.now()));
+    }
 
-    td.textContent = "";
-    td.appendChild(input);
-    setTimeout(() => input.focus(), 0);
+    function clearEditorName() {
+      localStorage.removeItem(LS_EDITOR_NAME);
+      localStorage.removeItem(LS_EDITOR_AT);
+      updateEditorBadge();
+    }
 
-    input.addEventListener("keydown", e => {
-      if (e.key === "Enter") input.blur();
-      if (e.key === "Escape") td.textContent = oldVal;
-    });
+    // ===== Editor selection (no list shown) =====
+    async function getEditorName() {
+      const now = Date.now();
 
-    input.addEventListener("blur", async () => {
-      const newVal = input.value;
-      td.textContent = newVal;
+      let name = (localStorage.getItem(LS_EDITOR_NAME) || "").trim();
+      const last = getEditorStamp();
 
-      // ✅ Ensure token exists BEFORE writing
-      const token = ensureAuthToken();
-      if (!token) {
-        alert("AUTH token is required to edit.");
-        td.textContent = oldVal;
+      // Still valid within TTL -> reuse
+      if (name && last && (now - last) < EDITOR_TTL_MS) {
+        return name;
+      }
+
+      // Expired or missing -> reprompt
+      while (true) {
+        name = (prompt("Enter your name (authorized editors only):") || "").trim();
+        if (!name) {
+          alert("Name is required to edit.");
+          continue;
+        }
+        localStorage.setItem(LS_EDITOR_NAME, name);
+        setEditorStampNow();
+        updateEditorBadge();
+        return name;
+      }
+    }
+
+    // ===== Load table data =====
+    async function loadData() {
+      const tbody = document.getElementById("tableBody");
+      tbody.innerHTML = "";
+
+      let raw = {};
+      try {
+        const res = await fetch("/api/data", { cache: "no-store" });
+        raw = await res.json();
+      } catch (e) {
+        console.error("Failed to load /api/data", e);
         return;
       }
 
-      // ✅ Must await editor
-      const editedBy = await getEditorName();
+      const keys = Object.keys(raw)
+        .map(k => Number(k))
+        .filter(n => Number.isInteger(n));
+
+      if (!keys.length) {
+        nextIndex = 0;
+        return;
+      }
+
+      const maxIndex = Math.max(...keys);
+      const rowCount = Math.ceil((maxIndex + 1) / COLUMNS);
+
+      for (let r = 0; r < rowCount; r++) {
+        const tr = document.createElement("tr");
+        const base = r * COLUMNS;
+
+        for (let c = 0; c < COLUMNS; c++) {
+          const idx = base + c;
+          const td = document.createElement("td");
+          td.dataset.index = idx;
+
+          td.textContent = Object.prototype.hasOwnProperty.call(raw, String(idx))
+            ? raw[String(idx)]
+            : "";
+
+          td.ondblclick = () => editCell(td);
+          tr.appendChild(td);
+        }
+
+        tbody.appendChild(tr);
+      }
+
+      nextIndex = rowCount * COLUMNS;
+    }
+
+    // ===== Edit cell =====
+    function editCell(td) {
+      if (td.querySelector("input")) return;
+
+      const oldVal = td.textContent;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = oldVal;
+      input.style.width = "100%";
+
+      td.textContent = "";
+      td.appendChild(input);
+      setTimeout(() => input.focus(), 0);
+
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") input.blur();
+        if (e.key === "Escape") td.textContent = oldVal;
+      });
+
+      input.addEventListener("blur", async () => {
+        const newVal = input.value;
+        td.textContent = newVal;
+
+        // Ensure token (auto-prompt on first edit)
+        const token = await ensureAuthToken();
+        if (!token) {
+          alert("Editing cancelled (no token).");
+          td.textContent = oldVal;
+          return;
+        }
+
+        // Ensure editor (reprompt every hour)
+        const editedBy = await getEditorName();
+
+        const payload = {
+          index: Number(td.dataset.index),
+          value: newVal,
+          editedBy
+        };
+
+        async function doSave() {
+          return fetch("/api/save", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeaders()
+            },
+            body: JSON.stringify(payload)
+          });
+        }
+
+        try {
+          let res = await doSave();
+
+          // If token invalid, reprompt token and retry once
+          if (res.status === 401) {
+            clearAuthToken();
+            alert("Token invalid/expired. Please enter the new token.");
+            const newToken = await ensureAuthToken();
+            if (!newToken) {
+              td.textContent = oldVal;
+              return;
+            }
+            res = await doSave();
+          }
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+
+            // If editor not allowed, clear name so it reprompts next time
+            if (res.status === 403) {
+              clearEditorName();
+              alert("Editor not allowed. Please enter an authorized name.");
+            } else {
+              alert(err.error || "Save failed");
+            }
+
+            td.textContent = oldVal; // rollback UI
+          }
+        } catch (e) {
+          console.error(e);
+          alert("Network error while saving.");
+          td.textContent = oldVal;
+        }
+      });
+    }
+
+    // ===== Add row =====
+    async function addRow() {
+      const token = await ensureAuthToken();
+      if (!token) return;
+
+      const editor = await getEditorName();
+
+      const tbody = document.getElementById("tableBody");
+      const tr = document.createElement("tr");
+
+      const tds = [];
+      for (let c = 0; c < COLUMNS; c++) {
+        const td = document.createElement("td");
+        td.dataset.index = nextIndex++;
+        td.textContent = "";
+        td.ondblclick = () => editCell(td);
+        tr.appendChild(td);
+        tds.push(td);
+      }
+      tbody.appendChild(tr);
 
       try {
-        const res = await fetch("/api/save", {
+        const saves = tds.map(td =>
+          fetch("/api/save", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeaders()
+            },
+            body: JSON.stringify({
+              index: Number(td.dataset.index),
+              value: "",
+              editedBy: editor
+            })
+          })
+        );
+
+        const results = await Promise.all(saves);
+        const bad = results.find(r => !r.ok);
+
+        if (bad) {
+          const err = await bad.json().catch(() => ({}));
+          if (bad.status === 401) {
+            clearAuthToken();
+            alert("Token invalid/expired. Please enter the new token.");
+          } else if (bad.status === 403) {
+            clearEditorName();
+            alert("Editor not allowed. Please enter an authorized name.");
+          } else {
+            alert(err.error || "Save failed");
+          }
+        }
+      } catch (e) {
+        console.error(e);
+        alert("Network error while adding row.");
+      }
+    }
+
+    // ===== Remove row =====
+    async function removeRow() {
+      const token = await ensureAuthToken();
+      if (!token) return;
+
+      const editor = await getEditorName();
+
+      const tbody = document.getElementById("tableBody");
+      if (!tbody.rows.length) return;
+
+      const startIndex = nextIndex - COLUMNS;
+
+      try {
+        const res = await fetch("/api/deleteRange", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...authHeaders(),
+            ...authHeaders()
           },
           body: JSON.stringify({
-            index: Number(td.dataset.index),
-            value: newVal,
-            editedBy,
-          }),
+            startIndex,
+            count: COLUMNS,
+            editedBy: editor
+          })
         });
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          alert(err.error || "Save failed");
-          td.textContent = oldVal; // rollback UI
+
+          if (res.status === 401) {
+            clearAuthToken();
+            alert("Token invalid/expired. Please enter the new token.");
+          } else if (res.status === 403) {
+            clearEditorName();
+            alert("Editor not allowed. Please enter an authorized name.");
+          } else {
+            alert(err.error || "Delete failed");
+          }
+          return;
         }
+
+        tbody.deleteRow(-1);
+        nextIndex -= COLUMNS;
       } catch (e) {
         console.error(e);
-        alert("Network error while saving.");
-        td.textContent = oldVal; // rollback UI
+        alert("Network error while deleting row.");
       }
+    }
+
+    // Make available to inline onclick=""
+    window.addRow = addRow;
+    window.removeRow = removeRow;
+
+    document.addEventListener("DOMContentLoaded", () => {
+      updateEditorBadge();
+      loadData();
     });
-  }
-
-  async function addRow() {
-    const token = ensureAuthToken();
-    if (!token) return;
-
-    const editor = await getEditorName();
-
-    const tbody = document.getElementById("tableBody");
-    const tr = document.createElement("tr");
-
-    const tds = [];
-    for (let c = 0; c < COLUMNS; c++) {
-      const td = document.createElement("td");
-      td.dataset.index = nextIndex++;
-      td.textContent = "";
-      td.ondblclick = () => editCell(td);
-      tr.appendChild(td);
-      tds.push(td);
-    }
-    tbody.appendChild(tr);
-
-    try {
-      const saves = tds.map(td =>
-        fetch("/api/save", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...authHeaders(),
-          },
-          body: JSON.stringify({
-            index: Number(td.dataset.index),
-            value: "",
-            editedBy: editor,
-          }),
-        })
-      );
-
-      const results = await Promise.all(saves);
-      const bad = results.find(r => !r.ok);
-      if (bad) {
-        const err = await bad.json().catch(() => ({}));
-        alert(err.error || "Save failed");
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Network error while adding row.");
-    }
-  }
-
-  async function removeRow() {
-    const token = ensureAuthToken();
-    if (!token) return;
-
-    const editor = await getEditorName();
-
-    const tbody = document.getElementById("tableBody");
-    if (!tbody.rows.length) return;
-
-    const startIndex = nextIndex - COLUMNS;
-
-    try {
-      const res = await fetch("/api/deleteRange", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeaders(),
-        },
-        body: JSON.stringify({
-          startIndex,
-          count: COLUMNS,
-          editedBy: editor,
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        alert(err.error || "Delete failed");
-        return;
-      }
-
-      tbody.deleteRow(-1);
-      nextIndex -= COLUMNS;
-    } catch (e) {
-      console.error(e);
-      alert("Network error while deleting row.");
-    }
-  }
-
-  // ✅ Make functions available to inline onclick=""
-  window.addRow = addRow;
-  window.removeRow = removeRow;
-
-  document.addEventListener("DOMContentLoaded", () => {
-  loadData();
-  updateEditorBadge();
-});
-
-</script>
+  </script>
 
   <!-- =======================
        Barcode
   ======================== -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
-  <script>
-    function updateEditorBadge() {
-  const el = document.getElementById("editorBadge");
-  if (!el) return;
-
-  const name = (localStorage.getItem("editorName") || "").trim();
-  el.textContent = name || "No User";
-}
-  </script>
   <script>
     const UNIQUE_ID = "CJ-MA-2026-02-28";
     JsBarcode("#idBarcode", UNIQUE_ID, {
@@ -334,7 +487,7 @@
       margin: 0,
       displayValue: false
     });
-    document.getElementById('watermark').textContent = `ID: ${UNIQUE_ID}`;
+    document.getElementById("watermark").textContent = `ID: ${UNIQUE_ID}`;
   </script>
 </body>
 </html>
