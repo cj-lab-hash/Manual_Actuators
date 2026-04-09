@@ -87,6 +87,50 @@
 #editableTable {
   margin-top: 6px;
 }
+/* Cell save status styles */
+td.saving {
+  position: relative;
+  opacity: 0.75;
+}
+
+td.saving::after {
+  content: "Saving…";
+  position: absolute;
+  right: 6px;
+  top: 4px;
+  font-size: 11px;
+  color: #555;
+  background: #fff6bf;
+  border: 1px solid #f0d36a;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+td.saved::after {
+  content: "Saved ✓";
+  position: absolute;
+  right: 6px;
+  top: 4px;
+  font-size: 11px;
+  color: #155724;
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+td.save-error::after {
+  content: "Error ✗";
+  position: absolute;
+  right: 6px;
+  top: 4px;
+  font-size: 11px;
+  color: #721c24;
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
 
   </style>
 </head>
@@ -182,7 +226,20 @@
       </div>
     </div>
   </div>
-
+<div id="toast" style="
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  background: #333;
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  display: none;
+  z-index: 9999;
+  max-width: 320px;
+"></div>
+``
   <!-- =======================
        App Logic
   ======================== -->
@@ -437,67 +494,94 @@
       });
 
       input.addEventListener("blur", async () => {
-        const newVal = input.value;
-        td.textContent = newVal;
+  const newVal = input.value;
+  td.textContent = newVal;
 
-        const token = await ensureAuthToken();
-        if (!token) {
-          alert("Editing cancelled (no token).");
-          td.textContent = oldVal;
-          return;
-        }
+  // Ensure token
+  const token = await ensureAuthToken();
+  if (!token) {
+    alert("Editing cancelled (no token).");
+    td.textContent = oldVal;
+    setCellStatus(td, "save-error");
+    return;
+  }
 
-        const editedBy = await getEditorName();
+  // Ensure editor
+  const editedBy = await getEditorName();
 
-        const payload = {
-          index: Number(td.dataset.index),
-          value: newVal,
-          editedBy
-        };
+  const payload = {
+    index: Number(td.dataset.index),
+    value: newVal,
+    editedBy
+  };
 
-        async function doSave() {
-          return fetch("/api/save", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...authHeaders()
-            },
-            body: JSON.stringify(payload)
-          });
-        }
+  async function doSave() {
+    return fetch("/api/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders()
+      },
+      body: JSON.stringify(payload)
+    });
+  }
 
-        try {
-          let res = await doSave();
+  // ✅ show saving once before request
+  setCellStatus(td, "saving");
 
-          if (res.status === 401) {
-            clearAuthToken();
-            alert("Token invalid/expired. Please enter the new token.");
-            const newToken = await ensureAuthToken();
-            if (!newToken) {
-              td.textContent = oldVal;
-              return;
-            }
-            res = await doSave();
-          }
+  try {
+    let res = await doSave();
 
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            if (res.status === 403) {
-              clearEditorName();
-              alert("Editor not allowed. Please enter an authorized name.");
-            } else {
-              alert(err.error || "Save failed");
-            }
-            td.textContent = oldVal;
-          }
-        } catch (e) {
-          console.error(e);
-          alert("Network error while saving.");
-          td.textContent = oldVal;
-        } finally {
-          applySearchFilter();
-        }
-      });
+    // If token is invalid/expired → reprompt token then retry once
+    if (res.status === 401) {
+      clearAuthToken();
+      setCellStatus(td, "save-error");
+      alert("Token invalid/expired. Please enter the new token.");
+
+      const newToken = await ensureAuthToken();
+      if (!newToken) {
+        td.textContent = oldVal;
+        return;
+      }
+
+      // ✅ back to saving before retry
+      setCellStatus(td, "saving");
+      res = await doSave();
+    }
+
+    // Handle non-OK responses
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+
+      if (res.status === 403) {
+        clearEditorName();
+        setCellStatus(td, "save-error");
+        showToast("❌ Editor not allowed", 2200);
+        alert("Editor not allowed. Please enter an authorized name.");
+      } else {
+        setCellStatus(td, "save-error");
+        showToast("❌ Save failed", 2200);
+        alert(err.error || "Save failed");
+      }
+
+      td.textContent = oldVal; // rollback UI
+      return;
+    }
+
+    // ✅ SUCCESS: the DB commit already happened if server returns 200 OK
+    setCellStatus(td, "saved");
+    showToast("✅ Saved!");
+
+  } catch (e) {
+    console.error(e);
+    setCellStatus(td, "save-error");
+    showToast("❌ Network error", 2200);
+    alert("Network error while saving.");
+    td.textContent = oldVal; // rollback UI
+  } finally {
+    applySearchFilter();
+  }
+});
     }
 
     // ===== Add row =====
@@ -623,6 +707,27 @@
         applySearchFilter();
       });
     });
+
+
+    function setCellStatus(td, status) {
+  td.classList.remove("saving", "saved", "save-error");
+  if (status) td.classList.add(status);
+
+  // Auto-clear "saved" and "error" after 1.2s
+  if (status === "saved" || status === "save-error") {
+    setTimeout(() => td.classList.remove("saved", "save-error"), 1200);
+  }
+}
+
+function showToast(msg, ms = 1500) {
+  const t = document.getElementById("toast");
+  if (!t) return;
+  t.textContent = msg;
+  t.style.display = "block";
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.style.display = "none", ms);
+}
+
   </script>
 
   <!-- =======================
