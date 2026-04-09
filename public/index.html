@@ -24,6 +24,15 @@
 </head>
 
 <body>
+  <div style="margin:10px 0; display:flex; gap:8px; align-items:center;">
+  <input
+    id="searchBox"
+    type="text"
+    placeholder="Search (Name / Description / Barcode / Remarks)..."
+    style="padding:8px; width:min(420px, 90vw);"
+  />
+  <button type="button" onclick="clearSearch()">Clear</button>
+</div>
   <div id="table">
     <h1>List of Manual Actuators</h1>
 
@@ -268,6 +277,8 @@
       }
 
       nextIndex = rowCount * COLUMNS;
+      applySearchFilter();
+
     }
 
     // ===== Edit cell =====
@@ -377,7 +388,7 @@
         tds.push(td);
       }
       tbody.appendChild(tr);
-
+      applySearchFilter();
       try {
         const saves = tds.map(td =>
           fetch("/api/save", {
@@ -413,6 +424,8 @@
         console.error(e);
         alert("Network error while adding row.");
       }
+      
+
     }
 
     // ===== Remove row =====
@@ -462,16 +475,63 @@
         console.error(e);
         alert("Network error while deleting row.");
       }
+      applySearchFilter();
     }
+function getCellText(td) {
+  // If user is editing, there might be an <input> inside the <td>
+  const input = td.querySelector("input");
+  return (input ? input.value : td.textContent || "").trim();
+}
+
+function applySearchFilter() {
+  const q = (document.getElementById("searchBox")?.value || "").trim().toLowerCase();
+  const tbody = document.getElementById("tableBody");
+  if (!tbody) return;
+
+  // If search empty, show all rows
+  if (!q) {
+    for (const row of tbody.rows) row.style.display = "";
+    return;
+  }
+
+  for (const row of tbody.rows) {
+    // Combine text from all cells in the row
+    let rowText = "";
+    for (const td of row.cells) {
+      rowText += " " + getCellText(td).toLowerCase();
+    }
+
+    row.style.display = rowText.includes(q) ? "" : "none";
+  }
+}
+
+function clearSearch() {
+  const box = document.getElementById("searchBox");
+  if (box) box.value = "";
+  applySearchFilter();
+}
+
+// Optional: avoid filtering on every single keystroke too aggressively
+function debounce(fn, ms = 150) {
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), ms);
+  };
+}
 
     // Make available to inline onclick=""
     window.addRow = addRow;
     window.removeRow = removeRow;
+document.addEventListener("DOMContentLoaded", () => {
+  updateEditorBadge();
+  loadData().then(() => {
+    // Attach filter listener after table exists
+    const box = document.getElementById("searchBox");
+    if (box) box.addEventListener("input", debounce(applySearchFilter, 120));
+  });
+});
 
-    document.addEventListener("DOMContentLoaded", () => {
-      updateEditorBadge();
-      loadData();
-    });
   </script>
 
   <!-- =======================
