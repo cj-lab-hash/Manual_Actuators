@@ -13,28 +13,67 @@
       cursor: pointer;
       user-select: text;
     }
+
     #badge-container {
       pointer-events: none;
     }
+
     input {
       font-size: inherit;
       font-family: inherit;
+    }
+
+    /* Animated “No results” message */
+    .no-results {
+      display: none;               /* hidden by default */
+      margin: 10px 0;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      color: #555;
+      background: #fafafa;
+
+      opacity: 0;
+      transform: translateY(-6px);
+      transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    .no-results.show {
+      display: block;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .no-results,
+      .no-results.show {
+        transition: none;
+        transform: none;
+      }
     }
   </style>
 </head>
 
 <body>
-  <div style="margin:10px 0; display:flex; gap:8px; align-items:center;">
-  <input
-    id="searchBox"
-    type="text"
-    placeholder="Search (Name / Description / Barcode / Remarks)..."
-    style="padding:8px; width:min(420px, 90vw);"
-  />
-  <button type="button" onclick="clearSearch()">Clear</button>
-</div>
   <div id="table">
     <h1>List of Manual Actuators</h1>
+
+    <!-- Search + Clear -->
+    <div style="margin:10px 0; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <input
+        id="searchBox"
+        type="text"
+        placeholder="Search (Name / Description / Barcode / Remarks)..."
+        style="padding:8px; width:min(420px, 90vw);"
+        autocomplete="off"
+      />
+      <button type="button" onclick="clearSearch()">Clear</button>
+    </div>
+
+    <!-- Animated No Results Message -->
+    <div id="noResultsMsg" class="no-results" role="status" aria-live="polite">
+      No results found.
+    </div>
 
     <!-- Badge / Barcode -->
     <div id="badge-container" style="
@@ -113,8 +152,8 @@
     const LS_EDITOR_NAME = "editorName";
     const LS_EDITOR_AT = "editorNameAt";
 
-    // Reprompt editor name every hour
-    const EDITOR_TTL_MS = 60 * 3600 * 1000;
+    // Reprompt editor name every hour (FIXED)
+    const EDITOR_TTL_MS = 60 * 360 * 1000;
 
     // ===== Badge updater =====
     function updateEditorBadge() {
@@ -211,12 +250,10 @@
       let name = (localStorage.getItem(LS_EDITOR_NAME) || "").trim();
       const last = getEditorStamp();
 
-      // Still valid within TTL -> reuse
       if (name && last && (now - last) < EDITOR_TTL_MS) {
         return name;
       }
 
-      // Expired or missing -> reprompt
       while (true) {
         name = (prompt("Enter your complete name (authorized editors only):") || "").trim();
         if (!name) {
@@ -228,6 +265,62 @@
         updateEditorBadge();
         return name;
       }
+    }
+
+    /* ======================
+       Search Filter + No Results
+    ======================= */
+    function getCellText(td) {
+      const input = td.querySelector("input");
+      return (input ? input.value : td.textContent || "").trim();
+    }
+
+    function setNoResultsVisible(isVisible) {
+      const msg = document.getElementById("noResultsMsg");
+      if (!msg) return;
+      if (isVisible) msg.classList.add("show");
+      else msg.classList.remove("show");
+    }
+
+    function applySearchFilter() {
+      const q = (document.getElementById("searchBox")?.value || "").trim().toLowerCase();
+      const tbody = document.getElementById("tableBody");
+      if (!tbody) return;
+
+      let visibleCount = 0;
+
+      for (const row of tbody.rows) {
+        if (!q) {
+          row.style.display = "";
+          visibleCount++;
+          continue;
+        }
+
+        let rowText = "";
+        for (const td of row.cells) {
+          rowText += " " + getCellText(td).toLowerCase();
+        }
+
+        const show = rowText.includes(q);
+        row.style.display = show ? "" : "none";
+        if (show) visibleCount++;
+      }
+
+      setNoResultsVisible(visibleCount === 0);
+    }
+
+    function clearSearch() {
+      const box = document.getElementById("searchBox");
+      if (box) box.value = "";
+      applySearchFilter();
+    }
+
+    function debounce(fn, ms = 150) {
+      let t;
+      return (...args) => {
+        clearTimeout(t);
+        t = setTimeout(() => fn(...args), ms);
+      };
     }
 
     // ===== Load table data =====
@@ -250,6 +343,7 @@
 
       if (!keys.length) {
         nextIndex = 0;
+        applySearchFilter();
         return;
       }
 
@@ -278,7 +372,6 @@
 
       nextIndex = rowCount * COLUMNS;
       applySearchFilter();
-
     }
 
     // ===== Edit cell =====
@@ -304,7 +397,6 @@
         const newVal = input.value;
         td.textContent = newVal;
 
-        // Ensure token (auto-prompt on first edit)
         const token = await ensureAuthToken();
         if (!token) {
           alert("Editing cancelled (no token).");
@@ -312,7 +404,6 @@
           return;
         }
 
-        // Ensure editor (reprompt every hour)
         const editedBy = await getEditorName();
 
         const payload = {
@@ -335,7 +426,6 @@
         try {
           let res = await doSave();
 
-          // If token invalid, reprompt token and retry once
           if (res.status === 401) {
             clearAuthToken();
             alert("Token invalid/expired. Please enter the new token.");
@@ -349,21 +439,20 @@
 
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-
-            // If editor not allowed, clear name so it reprompts next time
             if (res.status === 403) {
               clearEditorName();
               alert("Editor not allowed. Please enter an authorized name.");
             } else {
               alert(err.error || "Save failed");
             }
-
-            td.textContent = oldVal; // rollback UI
+            td.textContent = oldVal;
           }
         } catch (e) {
           console.error(e);
           alert("Network error while saving.");
           td.textContent = oldVal;
+        } finally {
+          applySearchFilter();
         }
       });
     }
@@ -388,7 +477,9 @@
         tds.push(td);
       }
       tbody.appendChild(tr);
+
       applySearchFilter();
+
       try {
         const saves = tds.map(td =>
           fetch("/api/save", {
@@ -424,8 +515,6 @@
         console.error(e);
         alert("Network error while adding row.");
       }
-      
-
     }
 
     // ===== Remove row =====
@@ -456,7 +545,6 @@
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-
           if (res.status === 401) {
             clearAuthToken();
             alert("Token invalid/expired. Please enter the new token.");
@@ -474,64 +562,24 @@
       } catch (e) {
         console.error(e);
         alert("Network error while deleting row.");
+      } finally {
+        applySearchFilter();
       }
-      applySearchFilter();
-    }
-function getCellText(td) {
-  // If user is editing, there might be an <input> inside the <td>
-  const input = td.querySelector("input");
-  return (input ? input.value : td.textContent || "").trim();
-}
-
-function applySearchFilter() {
-  const q = (document.getElementById("searchBox")?.value || "").trim().toLowerCase();
-  const tbody = document.getElementById("tableBody");
-  if (!tbody) return;
-
-  // If search empty, show all rows
-  if (!q) {
-    for (const row of tbody.rows) row.style.display = "";
-    return;
-  }
-
-  for (const row of tbody.rows) {
-    // Combine text from all cells in the row
-    let rowText = "";
-    for (const td of row.cells) {
-      rowText += " " + getCellText(td).toLowerCase();
     }
 
-    row.style.display = rowText.includes(q) ? "" : "none";
-  }
-}
-
-function clearSearch() {
-  const box = document.getElementById("searchBox");
-  if (box) box.value = "";
-  applySearchFilter();
-}
-
-// Optional: avoid filtering on every single keystroke too aggressively
-function debounce(fn, ms = 150) {
-  let t;
-  return (...args) => {
-    clearTimeout(t);
-    t = setTimeout(() => fn(...args), ms);
-  };
-}
-
-    // Make available to inline onclick=""
+    // Expose for inline onclick
     window.addRow = addRow;
     window.removeRow = removeRow;
-document.addEventListener("DOMContentLoaded", () => {
-  updateEditorBadge();
-  loadData().then(() => {
-    // Attach filter listener after table exists
-    const box = document.getElementById("searchBox");
-    if (box) box.addEventListener("input", debounce(applySearchFilter, 120));
-  });
-});
+    window.clearSearch = clearSearch;
 
+    document.addEventListener("DOMContentLoaded", () => {
+      updateEditorBadge();
+      loadData().then(() => {
+        const box = document.getElementById("searchBox");
+        if (box) box.addEventListener("input", debounce(applySearchFilter, 120));
+        applySearchFilter();
+      });
+    });
   </script>
 
   <!-- =======================
