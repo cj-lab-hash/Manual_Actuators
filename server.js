@@ -196,7 +196,7 @@ app.post("/api/save", requireAllowedEditor, async (req, res) => {
 
     await client.query(
       `
-      INSERT INTO cells (id, value)
+      INSERT INTO manual_actuators.cells (id, value)
       VALUES ($1, $2)
       ON CONFLICT (id)
       DO UPDATE SET value = EXCLUDED.value
@@ -256,7 +256,7 @@ app.post("/api/deleteRange", requireAllowedEditor, async (req, res) => {
     await client.query("BEGIN");
     await client.query(`SELECT set_config('app.user', $1, true)`, [editedBy.trim()]);
 
-    await client.query(`DELETE FROM cells WHERE id = ANY($1::text[])`, [ids]);
+    await client.query(`DELETE FROM manual_actuators.cells WHERE id = ANY($1::text[])`, [ids]);
 
     await client.query("COMMIT");
     res.json({ success: true, deleted: ids.length });
