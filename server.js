@@ -221,7 +221,7 @@ app.get("/api/data", async (_req, res) => {
   try {
     const { rows } = await client.query(`
       SELECT id, value
-      FROM cells
+      FROM manual_actuators.cells
       ORDER BY regexp_replace(id, '\\D', '', 'g')::int
     `);
 
@@ -235,7 +235,7 @@ app.get("/api/data", async (_req, res) => {
     res.json(data);
   } catch (err) {
     console.error("❌ /api/data error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Failed to load data" });
   } finally {
     client.release();
   }
