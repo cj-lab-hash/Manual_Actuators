@@ -141,8 +141,9 @@ td.save-error::after {
         <!-- Toolbar: Add/Remove + Search -->
 <div class="toolbar">
   <div class="toolbarActions">
-    <button onclick="addRow()">➕ Add Row</button>
-    <button onclick="removeRow()">➖ Remove Last Row</button>
+  <!--  <button onclick="addRow()">➕ Add Data</button> -->
+    <button type="button" onclick="openAddItemModal()">➕ Add Data</button>
+    <button onclick="removeRow()">➖ Remove Last Data</button>
   </div>
 
   <div class="toolbarSearch">
@@ -181,9 +182,6 @@ td.save-error::after {
       <div id="watermark" style="font-size:10px;color:#888;"></div>
     </div>
 
-    <!--<button onclick="addRow()">➕ Add Row</button>
-    <button onclick="removeRow()">➖ Remove Last Row</button> -->
-
     <table class="dataframe" style="width:90%" id="editableTable">
       <thead>
         <tr>
@@ -196,6 +194,45 @@ td.save-error::after {
       <tbody id="tableBody"></tbody>
     </table>
   </div>
+<!-- Add Item Modal -->
+<div id="addItemModal" class="modal hidden" aria-hidden="true">
+  <div class="modal-backdrop" data-close="true"></div>
+
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="addItemTitle">
+    <div class="modal-header">
+      <h3 id="addItemTitle">Add New Record</h3>
+      <button type="button" class="icon-btn" id="closeAddItemModalBtn" aria-label="Close">✕</button>
+    </div>
+
+    <form id="addItemForm" class="modal-body">
+      <div class="field">
+        <label for="itemName">Name</label>
+        <input id="itemName" name="name" type="text" required />
+      </div>
+
+      <div class="field">
+        <label for="itemDescription">Description</label>
+        <input id="itemDescription" name="description" type="text" />
+      </div>
+
+      <div class="field">
+        <label for="itemBarcodes">Barcodes</label>
+        <input id="itemBarcodes" name="barcodes" type="text" placeholder="e.g. 12345, 67890" />
+        <small class="hint">Tip: Separate multiple barcodes with commas.</small>
+      </div>
+
+      <div class="field">
+        <label for="itemRemarks">Remarks</label>
+        <input id="itemRemarks" name="remarks" type="text" />
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelAddItemBtn">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="saveAddItemBtn">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
 
   <!-- Token Modal -->
   <div id="tokenModal" style="
@@ -239,7 +276,7 @@ td.save-error::after {
   z-index: 9999;
   max-width: 320px;
 "></div>
-``
+
   <!-- =======================
        App Logic
   ======================== -->
@@ -592,19 +629,29 @@ td.save-error::after {
       const editor = await getEditorName();
 
       const tbody = document.getElementById("tableBody");
+      if (!tbody) return;
       const tr = document.createElement("tr");
+     
+      const fields = ["name", "description", "barcodes", "remarks"];
 
       const tds = [];
       for (let c = 0; c < COLUMNS; c++) {
+    //    const td = document.createElement("td");
+      //  td.dataset.index = nextIndex++;
+      //  td.textContent = "";
+      //  td.ondblclick = () => editCell(td);
+      //  tr.appendChild(td);
+      //  tds.push(td);
+      //}
+      
+      fields.forEach((key) => {
         const td = document.createElement("td");
-        td.dataset.index = nextIndex++;
-        td.textContent = "";
-        td.ondblclick = () => editCell(td);
+        td.textContent = data[key] || "";
+        td.ondblclick = () => editCell(td); // keep your existing edit behavior
         tr.appendChild(td);
-        tds.push(td);
-      }
-      tbody.appendChild(tr);
+          });
 
+      tbody.appendChild(tr);
       applySearchFilter();
 
       try {
@@ -727,7 +774,82 @@ function showToast(msg, ms = 1500) {
   clearTimeout(t._timer);
   t._timer = setTimeout(() => t.style.display = "none", ms);
 }
+      // ===== Modal helpers =====
+function openAddItemModal() {
+  const modal = document.getElementById("addItemModal");
+  const form = document.getElementById("addItemForm");
+  if (!modal || !form) return;
 
+  form.reset();
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+
+  // focus first field
+  document.getElementById("itemName")?.focus();
+}
+
+function closeAddItemModal() {
+  const modal = document.getElementById("addItemModal");
+  if (!modal) return;
+
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+// Close on ESC
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeAddItemModal();
+});
+
+// Close when clicking backdrop or close/cancel
+document.addEventListener("DOMContentLoaded", () => {
+  const modal = document.getElementById("addItemModal");
+  const cancelBtn = document.getElementById("cancelAddItemBtn");
+  const closeBtn = document.getElementById("closeAddItemModalBtn");
+  const form = document.getElementById("addItemForm");
+
+  if (!modal || !form) return;
+
+  modal.addEventListener("click", (e) => {
+    if (e.target?.dataset?.close === "true") closeAddItemModal();
+  });
+
+  cancelBtn?.addEventListener("click", closeAddItemModal);
+  closeBtn?.addEventListener("click", closeAddItemModal);
+
+  // Handle Save
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const token = await ensureAuthToken();
+    if (!token) return;
+
+    const editor = await getEditorName();
+
+    const payload = {
+      name: document.getElementById("itemName").value.trim(),
+      description: document.getElementById("itemDescription").value.trim(),
+      barcodes: document.getElementById("itemBarcodes").value.trim(),
+      remarks: document.getElementById("itemRemarks").value.trim(),
+      changed_by: editor
+    };
+
+    // OPTIONAL: uppercase some fields if you want (example)
+    // payload.name = payload.name.toUpperCase();
+
+    // 1) Add the row to the UI (immediate feedback)
+    addRowWithData(payload);
+
+    // 2) Save to backend
+    try {
+      await saveNewItemToServer(payload, token);
+      closeAddItemModal();
+    } catch (err) {
+      console.error("Save failed:", err);
+      alert("Failed to save. Please try again.");
+    }
+  });
+});
   </script>
 
   <!-- =======================

@@ -240,6 +240,24 @@ app.get("/api/data", async (_req, res) => {
     client.release();
   }
 });
+// Example of a new API route to save an item 
+  async function saveNewItemToServer(payload, token) {
+  const res = await fetch("/api/items", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+    const msg = await res.text();
+    throw new Error(msg || "Server error");
+  }
+
+  return res.json();
+}
 
 // Delete a range of cells
 app.post("/api/deleteRange", requireAllowedEditor, async (req, res) => {
