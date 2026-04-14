@@ -11,6 +11,7 @@
   <style>
     .dataframe td {
       cursor: pointer;
+      -webkit-user-select: text;
       user-select: text;
     }
 
@@ -620,7 +621,69 @@ td.save-error::after {
   }
 });
     }
+    function addRowWithData(data) {
+  const tbody = document.getElementById("tableBody");
+  if (!tbody) return { startIndex: nextIndex, tds: [] };
 
+  const tr = document.createElement("tr");
+
+  // Order must match your table columns (COLUMNS=4)
+  const values = [
+    data.name || "",
+    data.description || "",
+    data.barcodes || "",
+    data.remarks || ""
+  ];
+
+  const startIndex = nextIndex;
+  const tds = [];
+
+  values.forEach((val) => {
+    const td = document.createElement("td");
+    td.dataset.index = nextIndex++;      // IMPORTANT: assign index like your app expects
+    td.textContent = val;
+    td.ondblclick = () => editCell(td);  // keep your existing cell editing
+    tr.appendChild(td);
+    tds.push(td);
+  });
+
+  tbody.appendChild(tr);
+  applySearchFilter();
+  return { startIndex, tds };
+}
+
+async function saveNewItemToServer(data, editedBy, startIndex) {
+  const values = [
+    data.name || "",
+    data.description || "",
+    data.barcodes || "",
+    data.remarks || ""
+  ];
+
+  // Save each cell using your existing /api/save endpoint
+  const reqs = values.map((val, i) =>
+    fetch("/api/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders()
+      },
+      body: JSON.stringify({
+        index: startIndex + i,
+        value: String(val),       // backend expects string
+        editedBy: editedBy.trim()
+      })
+    })
+  );
+
+  const results = await Promise.all(reqs);
+  const bad = results.find(r => !r.ok);
+
+  if (bad) {
+    const err = await bad.json().catch(() => ({}));
+    throw new Error(err.error || `Save failed (HTTP ${bad.status})`);
+  }
+}
     // ===== Add row =====
     async function addRow() {
       const token = await ensureAuthToken();
@@ -642,7 +705,7 @@ td.save-error::after {
       //  td.ondblclick = () => editCell(td);
       //  tr.appendChild(td);
       //  tds.push(td);
-      //}
+      }
       
       fields.forEach((key) => {
         const td = document.createElement("td");
@@ -742,7 +805,7 @@ td.save-error::after {
     }
 
     // Expose for inline onclick
-    window.addRow = addRow;
+    //window.addRow = addRow;//
     window.removeRow = removeRow;
     window.clearSearch = clearSearch;
 
@@ -819,36 +882,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Handle Save
   form.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    const token = await ensureAuthToken();
-    if (!token) return;
+  const token = await ensureAuthToken();
+  if (!token) return;
 
-    const editor = await getEditorName();
+  const editor = await getEditorName();
 
-    const payload = {
-      name: document.getElementById("itemName").value.trim(),
-      description: document.getElementById("itemDescription").value.trim(),
-      barcodes: document.getElementById("itemBarcodes").value.trim(),
-      remarks: document.getElementById("itemRemarks").value.trim(),
-      changed_by: editor
-    };
+  const payload = {
+    name: document.getElementById("itemName").value.trim(),
+    description: document.getElementById("itemDescription").value.trim(),
+    barcodes: document.getElementById("itemBarcodes").value.trim(),
+    remarks: document.getElementById("itemRemarks").value.trim(),
+  };
 
-    // OPTIONAL: uppercase some fields if you want (example)
-    // payload.name = payload.name.toUpperCase();
+  // 1) Add row to UI immediately and capture index start
+  const { startIndex } = addRowWithData(payload);
 
-    // 1) Add the row to the UI (immediate feedback)
-    addRowWithData(payload);
-
-    // 2) Save to backend
-    try {
-      await saveNewItemToServer(payload, token);
-      closeAddItemModal();
-    } catch (err) {
-      console.error("Save failed:", err);
-      alert("Failed to save. Please try again.");
-    }
-  });
+  // 2) Save to backend (4 calls to /api/save)
+  try {
+    await saveNewItemToServer(payload, editor, startIndex);
+    closeAddItemModal();
+    showToast("✅ Added!");
+  } catch (err) {
+    console.error(err);
+    alert("Failed to save: " + err.message);
+  }
+});
 });
   </script>
 
