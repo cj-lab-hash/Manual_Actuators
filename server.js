@@ -40,16 +40,15 @@ function getBearerToken(req) {
 }
 
 function requireAuth(req, res, next) {
-  // Only protect write routes (non-GET)
+ //  Only protect write routes (non-GET)
   if (req.method === "GET") return next();
 
   const token = getBearerToken(req);
-  if (!AUTH_TOKEN || token !== AUTH_TOKEN) {
+ if (!AUTH_TOKEN || token !== AUTH_TOKEN) {
     return res.status(401).json({ error: "Unauthorized" });
-  }
+ }
   next();
 }
-
 function requireAdmin(req, res, next) {
   const token = getBearerToken(req);
   if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) {
@@ -114,16 +113,16 @@ app.use(express.static(publicDir));
 
 // Admin routes should NOT be blocked by AUTH middleware.
 // We'll enforce admin routes with requireAdmin instead.
-app.use((req, res, next) => {
-  if (!AUTH_TOKEN) return next();
-  if (req.method === "GET") return next();
+//((req, res, next) => {
+//  if (!AUTH_TOKEN) return next();
+//  if (req.method === "GET") return next();
 
   // Allow admin endpoints to pass through to requireAdmin
-  if (req.path.startsWith("/api/editors")) return next();
+//  if (req.path.startsWith("/api/editors")) return next();
 
   // Otherwise require normal AUTH_TOKEN
-  return requireAuth(req, res, next);
-});
+//  return requireAuth(req, res, next);
+//});
 
 /* ===========================================
    Database Schema Init (optional/keep)
