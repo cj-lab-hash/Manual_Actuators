@@ -357,8 +357,8 @@ td.save-error::after {
 form.onsubmit = (e) => {
   e.preventDefault();
   const token = (input.value || "").trim();
-  if (!token) return alert("Token is required.");
-  localStorage.setItem(LS_AUTH_TOKEN, token);
+  if (!token) return alert("Token is required."); 
+  localStorage.setItem(LS_AUTH_TOKEN, token); 
   modal.style.display = "none";
   cleanup();
   resolve(token);
@@ -895,13 +895,12 @@ document.addEventListener("DOMContentLoaded", () => {
   cancelBtn?.addEventListener("click", closeAddItemModal);
   closeBtn?.addEventListener("click", closeAddItemModal);
 
-  // Handle Save
-  form.addEventListener("submit", async (e) => {
+ 
+  // Handle Save (Modal)
+form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
- // const token = await ensureAuthToken(); ==removed token requirement for adding rows
- // if (!token) return; == removed token requirement for adding rows
-
+  // ✅ Ask editor name first (always)
   const editor = await getEditorName();
 
   const payload = {
@@ -914,9 +913,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // 1) Add row to UI immediately and capture index start
   const { startIndex } = addRowWithData(payload);
 
-  // 2) Save to backend (4 calls to /api/save)
+  // 2) Save to backend (4 calls to /api/save) WITHOUT prompting token first
   try {
-    await saveNewItemToServer(payload, editor, startIndex);
+    await saveNewItemToServerWithRetry(payload, editor, startIndex);
     closeAddItemModal();
     showToast("✅ Added!");
   } catch (err) {
@@ -925,6 +924,63 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 });
+async function saveNewItemToServerWithRetry(data, editedBy, startIndex) {
+  const values = [
+    data.name || "",
+    data.description || "",
+    data.barcodes || "",
+    data.remarks || ""
+  ];
+
+  const doSave = () => {
+    const reqs = values.map((val, i) =>
+      fetch("/api/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders() // ✅ uses existing token ONLY (no prompt)
+        },
+        body: JSON.stringify({
+          index: startIndex + i,
+          value: String(val),
+          editedBy: editedBy.trim() // ✅ captured editor name
+        })
+      })
+    );
+    return Promise.all(reqs);
+  };
+
+  // First attempt (no prompting)
+  let results = await doSave();
+
+  // If any request is unauthorized, THEN ask for token and retry once
+  const unauthorized = results.find(r => r.status === 401);
+  if (unauthorized) {
+    clearAuthToken();
+    alert("Token invalid/expired. Please enter a new token.");
+    const token = await ensureAuthToken(); // ✅ prompt only now
+    if (!token) throw new Error("No token provided.");
+
+    results = await doSave(); // retry after token
+  }
+
+  // Handle forbidden editor (403)
+  const forbidden = results.find(r => r.status === 403);
+  if (forbidden) {
+    clearEditorName();
+    throw new Error("Editor not allowed. Please enter an authorized name.");
+  }
+
+  // Any other error
+  const bad = results.find(r => !r.ok);
+  if (bad) {
+    const err = await bad.json().catch(() => ({}));
+    throw new Error(err.error || `Save failed (HTTP ${bad.status})`);
+  }
+
+  return true;
+}
+
   </script>
 
   <!-- =======================
