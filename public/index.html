@@ -233,7 +233,7 @@ td.save-error::after {
       </div>
     </form>
         <div id="addModalOverlay" class="modal-overlay hidden" aria-hidden="true">
-              <div class="modal-overlay-content">
+              <div class="modal-overlay-content" role="status" aria-live="polite"></div>>
                 <div class="overlay-spinner"></div>
                 <div class="overlay-text">Saving...</div>
               </div>
@@ -296,6 +296,8 @@ td.save-error::after {
     const COLUMNS = 4;
     let nextIndex = 0;
 
+
+    
     // ===== localStorage keys =====
     const LS_AUTH_TOKEN = "authToken";
     const LS_EDITOR_NAME = "editorName";
@@ -934,11 +936,37 @@ document.addEventListener("DOMContentLoaded", () => {
              }
           });
         });
-        function setAddModalOverlay(isLoading) {
-                const overlay = document.getElementById("addModalOverlay");
-                if (!overlay) return;
-                overlay.classList.toggle("hidden", !isLoading);
-              }
+      
+   function setAddModalOverlay(isLoading, message = "Saving...") {
+        const overlay = document.getElementById("addModalOverlay");
+        const text = overlay?.querySelector(".overlay-text");
+        const saveBtn = document.getElementById("saveAddItemBtn");
+        const cancelBtn = document.getElementById("cancelAddItemBtn");
+        const closeBtn = document.getElementById("closeAddItemModalBtn");
+
+        if (!overlay) return;
+
+        // Update message (optional)
+        if (text) text.textContent = message;
+
+        // Show/hide overlay
+        overlay.classList.toggle("hidden", !isLoading);
+        overlay.setAttribute("aria-hidden", String(!isLoading));
+
+        // Disable controls while saving (prevents double submit)
+        if (saveBtn) saveBtn.disabled = isLoading;
+        if (cancelBtn) cancelBtn.disabled = isLoading;
+        if (closeBtn) closeBtn.disabled = isLoading;
+      }
+    function closeAddItemModal() {
+        setAddModalOverlay(false); // ✅ ensure overlay is not stuck
+
+        const modal = document.getElementById("addItemModal");
+        if (!modal) return;
+
+        modal.classList.add("hidden");
+        modal.setAttribute("aria-hidden", "true");
+      }
   </script>
 
   <!-- =======================

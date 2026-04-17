@@ -110,6 +110,11 @@ p1 {
   font-size: 18px;
   cursor: pointer;
 }
+
+.modal-card {
+  position: relative;
+}
+
 .modal-overlay {
   position: absolute;
   inset: 0;
@@ -144,4 +149,8 @@ p1 {
   font-weight: 600;
   color: #333;
 }
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 
