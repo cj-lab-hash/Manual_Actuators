@@ -315,57 +315,59 @@ td.save-error::after {
       localStorage.removeItem(LS_AUTH_TOKEN);
     }
 
-    function openTokenModal() {
-      const modal = document.getElementById("tokenModal");
-      const input = document.getElementById("tokenInput");
-      const btnSave = document.getElementById("tokenSaveBtn");
-      const btnCancel = document.getElementById("tokenCancelBtn");
-
-     // if (!modal || !input || !btnSave || !btnCancel) {
-     if (!modal || !form || !input || !btnCancel) {
-        alert("Token modal missing in HTML.");
-        return Promise.resolve(null);
-      }
-
-      modal.style.display = "flex";
-      input.value = "";
-      setTimeout(() => input.focus(), 0);
-
-      return new Promise((resolve) => {
-        const cleanup = () => {
-          btnSave.onclick = null;
-          btnCancel.onclick = null;
-          input.onkeydown = null;
-        };
-
-        btnCancel.onclick = () => {
-          modal.style.display = "none";
-          cleanup();
-          resolve(null);
-        };
-
-      
-const form = document.getElementById("tokenForm");
+   
+          function openTokenModal() {
+            const modal = document.getElementById("tokenModal");
+            const form = document.getElementById("tokenForm");
+            const input = document.getElementById("tokenInput");
+            const btnCancel = document.getElementById("tokenCancelBtn");
 
 
+                  //if (!modal || !input || !btnSave || !btnCancel) {
+                if (!modal || !form || !input || !btnCancel) {
+                    alert("Token modal missing in HTML.");
+                    return Promise.resolve(null);
+                  }
 
-form.onsubmit = (e) => {
-  e.preventDefault();
-  const token = (input.value || "").trim();
-  if (!token) return alert("Token is required.");
-  localStorage.setItem(LS_AUTH_TOKEN, token);
-  modal.style.display = "none";
-  cleanup();
-  resolve(token);
-};
+                modal.style.display = "flex";
+                input.value = "";
+                setTimeout(() => input.focus(), 0);
+
+                return new Promise((resolve) => {
+                  const cleanup = () => {
+                    form.onclick = null;
+                    btnCancel.onclick = null;
+                    input.onkeydown = null;
+                  };
+
+                        btnCancel.onclick = () => {
+                          modal.style.display = "none";
+                          cleanup();
+                          resolve(null);
+                        };
+
+                      
+                const form = document.getElementById("tokenForm");
 
 
-        input.onkeydown = (e) => {
-          //if (e.key === "Enter") btnSave.click();
-          if (e.key === "Escape") btnCancel.click();
-        };
-      });
-    }
+
+                form.onsubmit = (e) => {
+                  e.preventDefault();
+                  const token = (input.value || "").trim();
+                  if (!token) return alert("Token is required.");
+                  localStorage.setItem(LS_AUTH_TOKEN, token);
+                  modal.style.display = "none";
+                  cleanup();
+                  resolve(token);
+                };
+
+
+                        input.onkeydown = (e) => {
+                          //if (e.key === "Enter") btnSave.click();
+                          if (e.key === "Escape") btnCancel.click();
+                        };
+                      });
+                    }
 
     async function ensureAuthToken() {
       const existing = (localStorage.getItem(LS_AUTH_TOKEN) || "").trim();
