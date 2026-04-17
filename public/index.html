@@ -701,8 +701,8 @@ async function saveNewItemToServer(data, editedBy, startIndex) {
 }
     // ===== Add row =====
     async function addRow() {
-      const token = await ensureAuthToken();
-      if (!token) return;
+      //const token = await ensureAuthToken(); //removed token requirement for adding rows
+      //if (!token) return; //
 
       const editor = await getEditorName();
 
@@ -899,8 +899,8 @@ document.addEventListener("DOMContentLoaded", () => {
   form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  const token = await ensureAuthToken();
-  if (!token) return;
+ // const token = await ensureAuthToken(); ==removed token requirement for adding rows
+ // if (!token) return; == removed token requirement for adding rows
 
   const editor = await getEditorName();
 
