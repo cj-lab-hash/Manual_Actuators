@@ -196,51 +196,42 @@ td.save-error::after {
     </table>
   </div>
 <!-- Add Item Modal -->
-<div id="addItemModal" class="modal hidden" aria-hidden="true">
-  <div class="modal-backdrop" data-close="true"></div>
+<form id="addItemForm" class="modal-body">
+  <div class="field">
+    <label for="itemName">Name</label>
+    <input id="itemName" name="name" type="text" required />
+  </div>
 
-  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="addItemTitle">
-    <div class="modal-header">
-      <h3 id="addItemTitle">Add New Record</h3>
-      <button type="button" class="icon-btn" id="closeAddItemModalBtn" aria-label="Close">✕</button>
-    </div>
+  <div class="field">
+    <label for="itemDescription">Description</label>
+    <input id="itemDescription" name="description" type="text" />
+  </div>
 
-    <form id="addItemForm" class="modal-body">
-      <div class="field">
-        <label for="itemName">Name</label>
-        <input id="itemName" name="name" type="text" required />
-      </div>
+  <div class="field">
+    <label for="itemBarcodes">Barcodes</label>
+    <input id="itemBarcodes" name="barcodes" type="text" placeholder="e.g. A4CTXXX, A2LBXXX" />
+    <small class="hint">Tip: Separate multiple barcodes with commas.</small>
+  </div>
 
-      <div class="field">
-        <label for="itemDescription">Description</label>
-        <input id="itemDescription" name="description" type="text" />
-      </div>
+  <div class="field">
+    <label for="itemRemarks">Remarks</label>
+    <input id="itemRemarks" name="remarks" type="text" />
+  </div>
 
-      <div class="field">
-        <label for="itemBarcodes">Barcodes</label>
-        <input id="itemBarcodes" name="barcodes" type="text" placeholder="e.g. A4CTXXX, A2LBXXX" />
-        <small class="hint">Tip: Separate multiple barcodes with commas.</small>
-      </div>
+  <div class="modal-footer">
+    <button type="button" class="btn btn-secondary" id="cancelAddItemBtn">Cancel</button>
+    <button type="submit" class="btn btn-primary" id="saveAddItemBtn">Save</button>
+  </div>
+</form>
 
-      <div class="field">
-        <label for="itemRemarks">Remarks</label>
-        <input id="itemRemarks" name="remarks" type="text" />
-      </div>
-
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" id="cancelAddItemBtn">Cancel</button>
-        <button type="submit" class="btn btn-primary" id="saveAddItemBtn">Save</button>
-      </div>
-    </form>
-        <div id="addModalOverlay" class="modal-overlay hidden" aria-hidden="true">
-              <div class="modal-overlay-content" role="status" aria-live="polite"></div>>
-                <div class="overlay-spinner"></div>
-                <div class="overlay-text">Saving...</div>
-              </div>
-        </div>
-
+<!-- ✅ Overlay INSIDE modal-card but OUTSIDE form -->
+<div id="addModalOverlay" class="modal-overlay hidden" aria-hidden="true">
+  <div class="modal-overlay-content" role="status" aria-live="polite">
+    <div class="overlay-spinner"></div>
+    <div class="overlay-text">Saving...</div>
   </div>
 </div>
+
 
   <!-- Token Modal -->
   <div id="tokenModal" style="
@@ -967,6 +958,27 @@ document.addEventListener("DOMContentLoaded", () => {
         modal.classList.add("hidden");
         modal.setAttribute("aria-hidden", "true");
       }
+        function openAddItemModal() {
+              const modal = document.getElementById("addItemModal");
+              const form = document.getElementById("addItemForm");
+              if (!modal || !form) return;
+
+              form.reset();
+              setAddModalOverlay(false); // ✅ always reset overlay
+
+              modal.classList.remove("hidden");
+              modal.setAttribute("aria-hidden", "false");
+              document.getElementById("itemName")?.focus();
+                  }
+
+            function closeAddItemModal() {
+                setAddModalOverlay(false); // ✅ always reset overlay
+                const modal = document.getElementById("addItemModal");
+                if (!modal) return;
+
+                modal.classList.add("hidden");
+                modal.setAttribute("aria-hidden", "true");
+          }
   </script>
 
   <!-- =======================
