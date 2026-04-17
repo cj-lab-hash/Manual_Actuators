@@ -253,18 +253,21 @@ td.save-error::after {
       box-shadow:0 10px 30px rgba(0,0,0,0.2);
     ">
       <h3 style="margin:0 0 10px;">Enter AUTH Token</h3>
-      <input id="tokenInput" type="password" placeholder="Paste token here"
-        style="width:100%; padding:10px; font-size:14px;" />
+      <form id="tokenForm">
+        <input id="tokenInput" type="password" placeholder="Paste token here"
+          style="width:100%; padding:10px; font-size:14px;" />
+      
       <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
         <button type="button" id="tokenCancelBtn">Cancel</button>
         <button type="button" id="tokenSaveBtn">Save</button>
       </div>
+      </form>
       <div style="margin-top:8px; font-size:12px; color:#666;">
         Token is stored only in this browser.
       </div>
     </div>
   </div>
-<div id="toast" style="
+    <div id="toast" style="
   position: fixed;
   bottom: 16px;
   right: 16px;
@@ -339,17 +342,28 @@ td.save-error::after {
           resolve(null);
         };
 
-        btnSave.onclick = () => {
-          const token = (input.value || "").trim();
-          if (!token) {
-            alert("Token is required.");
-            return;
-          }
-          localStorage.setItem(LS_AUTH_TOKEN, token);
-          modal.style.display = "none";
-          cleanup();
-          resolve(token);
-        };
+      //  btnSave.onclick = () => {
+        //  const token = (input.value || "").trim();
+       //   if (!token) {
+        //    alert("Token is required.");
+       //     return;
+        //  }
+        //  localStorage.setItem(LS_AUTH_TOKEN, token);
+       //   modal.style.display = "none";
+        //  cleanup();
+        //  resolve(token);
+       // }; const form = document.getElementById("tokenForm");
+
+form.onsubmit = (e) => {
+  e.preventDefault();
+  const token = (input.value || "").trim();
+  if (!token) return alert("Token is required.");
+  localStorage.setItem(LS_AUTH_TOKEN, token);
+  modal.style.display = "none";
+  cleanup();
+  resolve(token);
+};
+
 
         input.onkeydown = (e) => {
           if (e.key === "Enter") btnSave.click();
