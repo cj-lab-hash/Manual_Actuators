@@ -87,7 +87,18 @@ async function requireAllowedEditor(req, res, next) {
     res.status(500).json({ error: "Editor check failed" });
   }
 }
+    //=== Optional middleware to enforce editedBy presence and store it in req for later use ===
+    function requireEditedBy(req, res, next) {
+      const editedBy = req.body?.editedBy;
 
+      if (!editedBy || typeof editedBy !== "string" || !editedBy.trim()) {
+        return res.status(400).json({ error: "editedBy is required" });
+      }
+
+      // normalize and store for later use
+      req.editedBy = editedBy.trim();
+      next();
+    }
 /* ===========================================
    Serve static frontend
 =========================================== */
@@ -180,7 +191,8 @@ async function initDatabase() {
 =========================================== */
 
 // Save or update a cell
-app.post("/api/save", requireAllowedEditor, async (req, res) => {
+//app.post("/api/save", requireAllowedEditor, async (req, res) => {
+  app.post("/api/save", requireEditedBy, async (req, res) => {
   const { index, value, editedBy } = req.body;
 
   if (!Number.isInteger(index) || typeof value !== "string") {
@@ -260,7 +272,7 @@ app.get("/api/data", async (_req, res) => {
 }
 
 // Delete a range of cells
-app.post("/api/deleteRange", requireAllowedEditor, async (req, res) => {
+app.post("/api/deleteRange", requireAuth ,requireAllowedEditor, async (req, res) => {
   const { startIndex, count, editedBy } = req.body;
 
   if (!Number.isInteger(startIndex) || !Number.isInteger(count) || count <= 0) {
