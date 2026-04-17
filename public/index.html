@@ -345,8 +345,8 @@ td.save-error::after {
         };
 
       
-const token = await ensureAuthToken();
-if (!token) return;
+const form = document.getElementById("tokenForm");
+
 
 
 form.onsubmit = (e) => {
