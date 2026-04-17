@@ -232,6 +232,13 @@ td.save-error::after {
         <button type="submit" class="btn btn-primary" id="saveAddItemBtn">Save</button>
       </div>
     </form>
+        <div id="addModalOverlay" class="modal-overlay hidden" aria-hidden="true">
+              <div class="modal-overlay-content">
+                <div class="overlay-spinner"></div>
+                <div class="overlay-text">Saving...</div>
+              </div>
+        </div>
+
   </div>
 </div>
 
@@ -362,12 +369,12 @@ td.save-error::after {
                 };
 
 
-                        input.onkeydown = (e) => {
-                          //if (e.key === "Enter") btnSave.click();
-                          if (e.key === "Escape") btnCancel.click();
-                        };
-                      });
-                    }
+       input.onkeydown = (e) => {
+        //if (e.key === "Enter") btnSave.click();
+        if (e.key === "Escape") btnCancel.click();
+                 };
+              });
+        }
 
     async function ensureAuthToken() {
       const existing = (localStorage.getItem(LS_AUTH_TOKEN) || "").trim();
@@ -908,20 +915,30 @@ document.addEventListener("DOMContentLoaded", () => {
     remarks: document.getElementById("itemRemarks").value.trim(),
   };
 
-  // 1) Add row to UI immediately and capture index start
+  //  Add row to UI immediately and capture index start
   const { startIndex } = addRowWithData(payload);
 
-  // 2) Save to backend (4 calls to /api/save)
+  //loading overlay to prevent double submits while waiting for server response
+  setAddModalOverlay(true);
+
+  //  Save to backend (4 calls to /api/save)
   try {
     await saveNewItemToServer(payload, editor, startIndex);
     closeAddItemModal();
     showToast("✅ Added!");
-  } catch (err) {
+      } catch (err) {
     console.error(err);
     alert("Failed to save: " + err.message);
-                }
-                });
+       } finally {
+    setAddModalOverlay(false); 
+             }
+          });
         });
+        function setAddModalOverlay(isLoading) {
+                const overlay = document.getElementById("addModalOverlay");
+                if (!overlay) return;
+                overlay.classList.toggle("hidden", !isLoading);
+              }
   </script>
 
   <!-- =======================
