@@ -218,7 +218,7 @@ td.save-error::after {
 
       <div class="field">
         <label for="itemBarcodes">Barcodes</label>
-        <input id="itemBarcodes" name="barcodes" type="text" placeholder="e.g. 12345, 67890" />
+        <input id="itemBarcodes" name="barcodes" type="text" placeholder="e.g. A4CTXXX, A2LBXXX" />
         <small class="hint">Tip: Separate multiple barcodes with commas.</small>
       </div>
 
@@ -515,7 +515,8 @@ form.onsubmit = (e) => {
             ? raw[String(idx)]
             : "";
 
-          td.ondblclick = () => editCell(td);
+          //td.ondblclick = () => editCell(td); //remove editCells
+          
           tr.appendChild(td);
         }
 
@@ -656,7 +657,7 @@ form.onsubmit = (e) => {
     const td = document.createElement("td");
     td.dataset.index = nextIndex++;      // IMPORTANT: assign index like your app expects
     td.textContent = val;
-    td.ondblclick = () => editCell(td);  // keep your existing cell editing
+   // td.ondblclick = () => editCell(td);  // keep your existing cell editing //remove editCells
     tr.appendChild(td);
     tds.push(td);
   });
@@ -724,7 +725,7 @@ async function saveNewItemToServer(data, editedBy, startIndex) {
       fields.forEach((key) => {
         const td = document.createElement("td");
         td.textContent = data[key] || "";
-        td.ondblclick = () => editCell(td); // keep your existing edit behavior
+        //td.ondblclick = () => editCell(td); // keep your existing edit behavior //remove editCells
         tr.appendChild(td);
           });
 
