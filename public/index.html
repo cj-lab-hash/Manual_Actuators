@@ -896,8 +896,8 @@ document.addEventListener("DOMContentLoaded", () => {
   form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  const token = await ensureAuthToken();
-  if (!token) return;
+  //const token = await ensureAuthToken();
+  //if (!token) return;
 
   const editor = await getEditorName();
 
