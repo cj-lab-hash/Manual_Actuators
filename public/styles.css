@@ -93,7 +93,8 @@ button {
   display: flex;
   gap: 12px;
   align-items: center;
-  justify-content: center;  /* center everything */
+  justify-content: space-between;
+  gap: 12px;  
   flex-wrap: wrap;          /* wrap on small screens */
 }
 
@@ -107,11 +108,13 @@ button {
   display: flex;
   gap: 8px;
   align-items: center;
+  margin-left: auto;
 }
 
 .toolbarSearch input {
-  padding: 8px;
-  width: min(360px, 75vw);
+  width: 360px;
+  max-width: 75vw;
+  padding:  8px 12px;
 }
 
 /* Optional: make toolbar slightly separated from table */
