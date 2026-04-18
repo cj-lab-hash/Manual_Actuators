@@ -29,10 +29,20 @@ th {
  /* background-color: yellow; */
   color: yellow;
 }
+/* Ensure all inputs use border-box and inherit font styles */
 input {
-width: 100%;
-box-sizing: border-box;
+  box-sizing: border-box;
+  font-size: inherit;
+  font-family: inherit;
 }
+
+/* Apply full width only to inputs inside forms/fields */
+.field input,
+.modal-body input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 button {
     margin: 10px 0;
     padding: 8px 16px;
