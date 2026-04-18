@@ -68,44 +68,6 @@
       <tbody id="tableBody"></tbody>
     </table>
   </div>
-<!-- Add Item Modal -->
-<form id="addItemForm" class="modal-body">
-  <div class="field">
-    <label for="itemName">Name</label>
-    <input id="itemName" name="name" type="text" required />
-  </div>
-
-  <div class="field">
-    <label for="itemDescription">Description</label>
-    <input id="itemDescription" name="description" type="text" />
-  </div>
-
-  <div class="field">
-    <label for="itemBarcodes">Barcodes</label>
-    <input id="itemBarcodes" name="barcodes" type="text" placeholder="e.g. A4CTXXX, A2LBXXX" />
-    <small class="hint">Tip: Separate multiple barcodes with commas.</small>
-  </div>
-
-  <div class="field">
-    <label for="itemRemarks">Remarks</label>
-    <input id="itemRemarks" name="remarks" type="text" />
-  </div>
-
-  <div class="modal-footer">
-    <button type="button" class="btn btn-secondary" id="cancelAddItemBtn">Cancel</button>
-    <button type="submit" class="btn btn-primary" id="saveAddItemBtn">Save</button>
-  </div>
-</form>
-
-<!-- ✅ Overlay INSIDE modal-card but OUTSIDE form -->
-<div id="addModalOverlay" class="modal-overlay hidden" aria-hidden="true">
-  <div class="modal-overlay-content" role="status" aria-live="polite">
-    <div class="overlay-spinner"></div>
-    <div class="overlay-text">Saving...</div>
-  </div>
-</div>
-
-
   <!-- Add Item Modal -->
 <div id="addItemModal" class="modal hidden" aria-hidden="true">
   <div class="modal-backdrop" data-close="true"></div>
