@@ -7,133 +7,6 @@
 
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" href="hand.png" type="image/x-icon" />
-
-  <style>
-    .dataframe td {
-      cursor: pointer;
-      -webkit-user-select: text;
-      user-select: text;
-    }
-
-    #badge-container {
-      pointer-events: none;
-    }
-    #table {
-  position: relative;
-  padding-top: 20px; /* adjust if needed */
-    }
-
-    input {
-      font-size: inherit;
-      font-family: inherit;
-    }
-
-    /* Animated “No results” message */
-    .no-results {
-      display: none;               /* hidden by default */
-      margin: 10px 0;
-      padding: 10px 12px;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      color: #555;
-      background: #fafafa;
-
-      opacity: 0;
-      transform: translateY(-6px);
-      transition: opacity 160ms ease, transform 160ms ease;
-    }
-
-    .no-results.show {
-      display: block;
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .no-results,
-      .no-results.show {
-        transition: none;
-        transform: none;
-      }
-    }
-
-    /* Toolbar layout  */
-.toolbar {
-  margin: 10px 0 12px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: center;  /* center everything */
-  flex-wrap: wrap;          /* wrap on small screens */
-}
-
-.toolbarActions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.toolbarSearch {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.toolbarSearch input {
-  padding: 8px;
-  width: min(360px, 75vw);
-}
-
-/* Optional: make toolbar slightly separated from table */
-#editableTable {
-  margin-top: 6px;
-}
-/* Cell save status styles */
-td.saving {
-  position: relative;
-  opacity: 0.75;
-}
-
-td.saving::after {
-  content: "Saving…";
-  position: absolute;
-  right: 6px;
-  top: 4px;
-  font-size: 11px;
-  color: #555;
-  background: #fff6bf;
-  border: 1px solid #f0d36a;
-  padding: 2px 6px;
-  border-radius: 6px;
-}
-
-td.saved::after {
-  content: "Saved ✓";
-  position: absolute;
-  right: 6px;
-  top: 4px;
-  font-size: 11px;
-  color: #155724;
-  background: #d4edda;
-  border: 1px solid #c3e6cb;
-  padding: 2px 6px;
-  border-radius: 6px;
-}
-
-td.save-error::after {
-  content: "Error ✗";
-  position: absolute;
-  right: 6px;
-  top: 4px;
-  font-size: 11px;
-  color: #721c24;
-  background: #f8d7da;
-  border: 1px solid #f5c6cb;
-  padding: 2px 6px;
-  border-radius: 6px;
-}
-
-  </style>
 </head>
 
 <body>
@@ -233,39 +106,56 @@ td.save-error::after {
 </div>
 
 
-  <!-- Token Modal -->
-  <div id="tokenModal" style="
-    display:none;
-    position:fixed;
-    inset:0;
-    background:rgba(0,0,0,0.5);
-    align-items:center;
-    justify-content:center;
-    z-index:9999;
-  ">
-    <div style="
-      background:#fff;
-      padding:16px;
-      border-radius:10px;
-      width:min(420px, 92vw);
-      box-shadow:0 10px 30px rgba(0,0,0,0.2);
-    ">
-      <h3 style="margin:0 0 10px;">Enter AUTH Token</h3>
-      <form id="tokenForm">
-        <input id="tokenInput" type="password" placeholder="Paste token here"
-          style="width:100%; padding:10px; font-size:14px;" />
-      
-      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
-        <button type="submit" id="tokenSaveBtn">Save</button>
-        <button type="button" id="tokenCancelBtn">Cancel</button>
-        
+  <!-- Add Item Modal -->
+<div id="addItemModal" class="modal hidden" aria-hidden="true">
+  <div class="modal-backdrop" data-close="true"></div>
+
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="addItemTitle">
+    <div class="modal-header">
+      <h3 id="addItemTitle">Add New Record</h3>
+      <button type="button" class="icon-btn" id="closeAddItemModalBtn" aria-label="Close">✕</button>
+    </div>
+
+    <form id="addItemForm" class="modal-body">
+      <div class="field">
+        <label for="itemName">Name</label>
+        <input id="itemName" name="name" type="text" required />
       </div>
-      </form>
-      <div style="margin-top:8px; font-size:12px; color:#666;">
-        Token is stored only in this browser.
+
+      <div class="field">
+        <label for="itemDescription">Description</label>
+        <input id="itemDescription" name="description" type="text" />
+      </div>
+
+      <div class="field">
+        <label for="itemBarcodes">Barcodes</label>
+        <input id="itemBarcodes" name="barcodes" type="text" placeholder="e.g. A4CTXXX, A2LBXXX" />
+        <small class="hint">Tip: Separate multiple barcodes with commas.</small>
+      </div>
+
+      <div class="field">
+        <label for="itemRemarks">Remarks</label>
+        <input id="itemRemarks" name="remarks" type="text" />
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelAddItemBtn">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="saveAddItemBtn">Save</button>
+      </div>
+    </form>
+
+    <!-- ✅ Overlay inside modal-card (NOT outside) -->
+    <div id="addModalOverlay" class="modal-overlay hidden" aria-hidden="true">
+      <div class="modal-overlay-content" role="status" aria-live="polite">
+        <div class="overlay-spinner"></div>
+        <div class="overlay-text">Saving...</div>
       </div>
     </div>
+
   </div>
+</div>
+
+
     <div id="toast" style="
   position: fixed;
   bottom: 16px;
@@ -856,14 +746,14 @@ function openAddItemModal() {
   if (!modal || !form) return;
 
   form.reset();
+  setAddModalOverlay(false);   
   modal.classList.remove("hidden");
   modal.setAttribute("aria-hidden", "false");
-
-  // focus first field
   document.getElementById("itemName")?.focus();
 }
 
 function closeAddItemModal() {
+  setAddModalOverlay(false);
   const modal = document.getElementById("addItemModal");
   if (!modal) return;
 

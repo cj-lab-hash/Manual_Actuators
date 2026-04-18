@@ -39,6 +39,129 @@ button {
     font-size: 14px;
     cursor: pointer;
     position:relative
+ .dataframe td {
+      cursor: pointer;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+
+    #badge-container {
+      pointer-events: none;
+    }
+    #table {
+  position: relative;
+  padding-top: 20px; /* adjust if needed */
+    }
+
+    input {
+      font-size: inherit;
+      font-family: inherit;
+    }
+
+    /* Animated “No results” message */
+    .no-results {
+      display: none;               /* hidden by default */
+      margin: 10px 0;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      color: #555;
+      background: #fafafa;
+
+      opacity: 0;
+      transform: translateY(-6px);
+      transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    .no-results.show {
+      display: block;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .no-results,
+      .no-results.show {
+        transition: none;
+        transform: none;
+      }
+    }
+
+    /* Toolbar layout  */
+.toolbar {
+  margin: 10px 0 12px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;  /* center everything */
+  flex-wrap: wrap;          /* wrap on small screens */
+}
+
+.toolbarActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.toolbarSearch {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.toolbarSearch input {
+  padding: 8px;
+  width: min(360px, 75vw);
+}
+
+/* Optional: make toolbar slightly separated from table */
+#editableTable {
+  margin-top: 6px;
+}
+/* Cell save status styles */
+td.saving {
+  position: relative;
+  opacity: 0.75;
+}
+
+td.saving::after {
+  content: "Saving…";
+  position: absolute;
+  right: 6px;
+  top: 4px;
+  font-size: 11px;
+  color: #555;
+  background: #fff6bf;
+  border: 1px solid #f0d36a;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+td.saved::after {
+  content: "Saved ✓";
+  position: absolute;
+  right: 6px;
+  top: 4px;
+  font-size: 11px;
+  color: #155724;
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+td.save-error::after {
+  content: "Error ✗";
+  position: absolute;
+  right: 6px;
+  top: 4px;
+  font-size: 11px;
+  color: #721c24;
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
 
 }
 p1 {
@@ -49,7 +172,7 @@ p1 {
     top: 10px;
     right: 10px;
 }
-.hidden { display: none; }
+.hidden { display: none !important; }
 
 .modal {
   position: fixed;
