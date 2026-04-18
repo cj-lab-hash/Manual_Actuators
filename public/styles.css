@@ -44,98 +44,96 @@ input {
 }
 
 button {
-    margin: 10px 0;
-    padding: 8px 16px;
-    font-size: 14px;
-    cursor: pointer;
-    position:relative
- .dataframe td {
-      cursor: pointer;
-      -webkit-user-select: text;
-      user-select: text;
-    }
-
-    #badge-container {
-      pointer-events: none;
-    }
-    #table {
+  margin: 10px 0;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
   position: relative;
-  padding-top: 20px; /* adjust if needed */
-    }
+}
 
-    input {
-      font-size: inherit;
-      font-family: inherit;
-    }
+/* Make table cells selectable/clickable */
+.dataframe td {
+  cursor: pointer;
+  -webkit-user-select: text;
+  user-select: text;
+}
 
-    /* Animated “No results” message */
-    .no-results {
-      display: none;               /* hidden by default */
-      margin: 10px 0;
-      padding: 10px 12px;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      color: #555;
-      background: #fafafa;
+/* Badge should not block clicks */
+#badge-container {
+  pointer-events: none;
+}
 
-      opacity: 0;
-      transform: translateY(-6px);
-      transition: opacity 160ms ease, transform 160ms ease;
-    }
+#table {
+  position: relative;
+  padding-top: 20px;
+}
 
-    .no-results.show {
-      display: block;
-      opacity: 1;
-      transform: translateY(0);
-    }
+/* Animated “No results” message */
+.no-results {
+  display: none;               /* hidden by default */
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  color: #555;
+  background: #fafafa;
 
-    @media (prefers-reduced-motion: reduce) {
-      .no-results,
-      .no-results.show {
-        transition: none;
-        transform: none;
-      }
-    }
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
 
-    /* Toolbar layout  */
+.no-results.show {
+  display: block;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .no-results,
+  .no-results.show {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* Toolbar layout */
 .toolbar {
   width: 90%;
-  margin: 10px 0 12px;
+  margin: 10px auto 12px;        /* ✅ center toolbar like the table */
   display: flex;
   gap: 12px;
   align-items: center;
-  justify-content: space-between;  /* center everything */
-  flex-wrap: wrap;          /* wrap on small screens */
+  justify-content: center;        /* ✅ keep things centered (matches your screenshot) */
+  flex-wrap: wrap;
 }
+
 .toolbarActions {
   display: flex;
   gap: 8px;
   align-items: center;
-  margin-left: auto; /* push to the right */
-  justify-content: flex-end; /* align buttons to the right */
-  flex: 1 1 420px; /* allow to shrink on small screens */ 
 }
 
+/* Search group */
 .toolbarSearch {
   display: flex;
   gap: 8px;
   align-items: center;
 }
 
-.toolbarSearch input,
+/* Make search input bigger and consistent */
 #searchBox {
-  flex: 1 1 360px;          /* ✅ grows and shrinks nicely */
-  min-width: 320px;         /* ✅ prevents “tiny” search box */
-  max-width: 560px;         /* ✅ prevents it from becoming too wide */
-  width: auto;              /* ✅ avoids any global width rules */
+  width: 420px;                  /* ✅ bigger */
+  max-width: 80vw;               /* ✅ responsive */
+  min-width: 320px;              /* ✅ prevents tiny */
   padding: 8px 12px;
   box-sizing: border-box;
 }
 
-/* Optional: make toolbar slightly separated from table */
 #editableTable {
   margin-top: 6px;
 }
+
 /* Cell save status styles */
 td.saving {
   position: relative;
@@ -181,7 +179,7 @@ td.save-error::after {
   border-radius: 6px;
 }
 
-}
+
 p1 {
     font-size: 15px;
     color: #555;
