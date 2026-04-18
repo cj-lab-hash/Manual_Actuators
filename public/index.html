@@ -305,7 +305,7 @@
         if (show) visibleCount++;
       }
 
-      setNoResultsVisible(visibleCount === 0);
+      setNoResultsVisible(!!q && visibleCount === 0);
     }
 
     function clearSearch() {
