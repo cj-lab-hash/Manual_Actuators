@@ -314,17 +314,26 @@
       applySearchFilter();
     }
 
-    function debounce(fn, ms = 500) {
-      let t;
-      return (...args) => {
-        console.log("typing...");
-        clearTimeout(t);
-        t = setTimeout(() => {
-          console.log("RUN FILTER");
-          fn(...args); 
-        },
-        ms);
-    };
+  //   function debounce(fn, ms = 150) {
+  //     let t;
+  //     return (...args) => {
+  //       console.log("typing...");
+  //       clearTimeout(t);
+  //       t = setTimeout(() => {
+  //         console.log("RUN FILTER");
+  //         fn(...args); 
+  //       },
+  //       ms);
+  //   };
+  // }
+  function debounce(fn, ms=150) {
+    let t;
+    function wrapped(...args) {
+      clearTimeout(t);
+      t = setTimeout(() =>fn(...args),ms);
+    }
+    wrapped.cancel=()=> clearTimeout(t);
+    return wrapped;
   }
 
     // ===== Load table data =====
@@ -680,7 +689,8 @@ async function saveNewItemToServer(data, editedBy, startIndex) {
       updateEditorBadge();
       loadData().then(() => {
         const box = document.getElementById("searchBox");
-        if (box) box.addEventListener("input", debounce(applySearchFilter, 500));
+        const debounceSearch=debounce(applySearchFilter,300);
+        if (box) box.addEventListener("input", debounceSearch(applySearchFilter, 500));
         applySearchFilter();
       });
     });
