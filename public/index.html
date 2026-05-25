@@ -314,7 +314,7 @@
       applySearchFilter();
     }
 
-    function debounce(fn, ms = 150) {
+    function debounce(fn, ms = 500) {
       let t;
       return (...args) => {
         console.log("typing...");
@@ -680,7 +680,7 @@ async function saveNewItemToServer(data, editedBy, startIndex) {
       updateEditorBadge();
       loadData().then(() => {
         const box = document.getElementById("searchBox");
-        if (box) box.addEventListener("input", debounce(applySearchFilter, 120));
+        if (box) box.addEventListener("input", debounce(applySearchFilter, 500));
         applySearchFilter();
       });
     });
