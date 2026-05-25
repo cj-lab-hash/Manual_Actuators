@@ -317,10 +317,15 @@
     function debounce(fn, ms = 150) {
       let t;
       return (...args) => {
+        console.loge("typing...");
         clearTimeout(t);
-        t = setTimeout(() => fn(...args), ms);
-      };
-    }
+        t = setTimeout(() => {
+          console.log("RUN FILTER");
+          fn(...args); 
+        },
+        ms);
+    };
+  }
 
     // ===== Load table data =====
     async function loadData() {
