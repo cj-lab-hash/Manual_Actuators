@@ -689,8 +689,8 @@ async function saveNewItemToServer(data, editedBy, startIndex) {
       updateEditorBadge();
       loadData().then(() => {
         const box = document.getElementById("searchBox");
-        const debounceSearch=debounce(applySearchFilter,300);
-        if (box) box.addEventListener("input", debounceSearch(applySearchFilter, 500));
+        const debounceSearch=debounce(applySearchFilter,500);
+        if (box) box.addEventListener("input", debounceSearch);
         applySearchFilter();
       });
     });
