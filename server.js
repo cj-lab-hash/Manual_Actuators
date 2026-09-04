@@ -190,8 +190,7 @@ async function initDatabase() {
 =========================================== */
 
 // Save or update a cell
-//app.post("/api/save", requireAllowedEditor, async (req, res) => {
-  app.post("/api/save", requireEditedBy, async (req, res) => {
+app.post("/api/save", requireAuth, requireAllowedEditor, async (req, res) => {
   const { index, value, editedBy } = req.body;
 
   if (!Number.isInteger(index) || typeof value !== "string") {
