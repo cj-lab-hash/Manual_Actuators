@@ -310,9 +310,12 @@
 
     function clearSearch() {
       const box = document.getElementById("searchBox");
+      clearTimeout(clearSearch.timer);
       if (box) box.value = "";
       applySearchFilter();
     }
+
+    clearSearch.timer = null;
 
   //   function debounce(fn, ms = 150) {
   //     let t;
@@ -640,7 +643,12 @@ async function saveNewItemToServer(data, editedBy, startIndex) {
       const tbody = document.getElementById("tableBody");
       if (!tbody.rows.length) return;
 
-      const startIndex = nextIndex - COLUMNS;
+      const lastRow = tbody.rows[tbody.rows.length - 1];
+      const startIndex = Number(lastRow.cells[0]?.dataset.index);
+      if (!Number.isInteger(startIndex)) {
+        alert("Unable to determine the last row.");
+        return;
+      }
 
       try {
         const res = await fetch("/api/deleteRange", {
@@ -690,7 +698,13 @@ async function saveNewItemToServer(data, editedBy, startIndex) {
       loadData().then(() => {
         const box = document.getElementById("searchBox");
         const debounceSearch=debounce(applySearchFilter,500);
-        if (box) box.addEventListener("input", debounceSearch);
+        if (box) {
+          box.addEventListener("input", () => {
+            debounceSearch();
+            clearTimeout(clearSearch.timer);
+            clearSearch.timer = setTimeout(clearSearch, 3000);
+          });
+        }
         applySearchFilter();
       });
     });
