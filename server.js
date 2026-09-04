@@ -190,7 +190,7 @@ async function initDatabase() {
 =========================================== */
 
 // Save or update a cell
-app.post("/api/save", requireAuth, requireAllowedEditor, async (req, res) => {
+app.post("/api/save", requireAllowedEditor, async (req, res) => {
   const { index, value, editedBy } = req.body;
 
   if (!Number.isInteger(index) || typeof value !== "string") {
@@ -270,7 +270,7 @@ app.get("/api/data", async (_req, res) => {
 }
 
 // Delete a range of cells
-app.post("/api/deleteRange", requireAuth ,requireAllowedEditor, async (req, res) => {
+app.post("/api/deleteRange", requireAllowedEditor, async (req, res) => {
   const { startIndex, count, editedBy } = req.body;
 
   if (!Number.isInteger(startIndex) || !Number.isInteger(count) || count <= 0) {
