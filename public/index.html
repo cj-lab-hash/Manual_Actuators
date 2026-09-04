@@ -702,7 +702,7 @@ async function saveNewItemToServer(data, editedBy, startIndex) {
           box.addEventListener("input", () => {
             debounceSearch();
             clearTimeout(clearSearch.timer);
-            clearSearch.timer = setTimeout(clearSearch, 3000);
+            clearSearch.timer = setTimeout(clearSearch, 10000);
           });
         }
         applySearchFilter();
